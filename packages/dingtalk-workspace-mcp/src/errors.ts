@@ -8,6 +8,8 @@
 import type { DwsError, DwsErrorCode } from './types.js';
 
 /** 简单脱敏：常见凭据模式替换为占位符 */
+// Order matters: more specific patterns first.
+// Authorization line catches Bearer too, so put Bearer first to keep that label.
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/Bearer\s+[A-Za-z0-9._\-+/=]{8,}/gi, 'Bearer [REDACTED]'],
   [/Authorization:\s*\S+/gi, 'Authorization: [REDACTED]'],
@@ -49,6 +51,17 @@ export function formatError(error: DwsError): string {
   if (error.stderr) lines.push(`stderr:\n${error.stderr.trim()}`);
   if (error.stdout) lines.push(`stdout:\n${error.stdout.trim()}`);
   return lines.join('\n');
+}
+
+/**
+ * Startup-fatal error thrown across the cli/server boundary so cli.ts can
+ * narrow on the typed `code` field instead of `string` comparison.
+ */
+export class ProbeFatalError extends Error {
+  constructor(public readonly code: DwsErrorCode, message: string) {
+    super(message);
+    this.name = 'ProbeFatalError';
+  }
 }
 
 /** dws stderr 触发 auth 失效的关键词探测 */

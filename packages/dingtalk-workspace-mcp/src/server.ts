@@ -14,7 +14,7 @@ import type { ZodRawShape, ZodType } from 'zod';
 import { probeDws } from './dws-probe.js';
 import { loadAll } from './schema-loader.js';
 import { dispatchTool } from './dispatch.js';
-import { formatError } from './errors.js';
+import { formatError, ProbeFatalError } from './errors.js';
 import type { DwsFlagSpec, DwsProbeResult, DwsToolSpec } from './types.js';
 
 const SERVER_NAME = '@yoji/dingtalk-workspace-mcp';
@@ -30,10 +30,7 @@ export interface ServerOptions {
 export async function createServer(opts: ServerOptions = {}): Promise<McpServer> {
   const probe = await probeDws();
   if (!probe.ok) {
-    // 启动期致命错误：直接抛，让 cli.ts 处理 exit code
-    throw Object.assign(new Error(formatError(probe.error)), {
-      code: probe.error.code,
-    });
+    throw new ProbeFatalError(probe.error.code, formatError(probe.error));
   }
   const probeResult = probe.value;
   log(opts, `dws ${probeResult.version} at ${probeResult.binaryPath}`);

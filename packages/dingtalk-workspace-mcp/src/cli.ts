@@ -4,6 +4,7 @@
  */
 
 import { startServer } from './server.js';
+import { ProbeFatalError } from './errors.js';
 
 interface CliArgs {
   verbose: boolean;
@@ -68,9 +69,13 @@ async function main(): Promise<void> {
       toolTimeoutMs: args.toolTimeoutMs,
     });
   } catch (e) {
-    const err = e as Error & { code?: string };
-    process.stderr.write(`fatal: ${err.message}\n`);
-    process.exit(err.code === 'NOT_INSTALLED' || err.code === 'VERSION_TOO_OLD' ? 1 : 2);
+    const error = e as Error;
+    process.stderr.write(`fatal: ${error.message}\n`);
+    if (e instanceof ProbeFatalError) {
+      const installFatal = e.code === 'NOT_INSTALLED' || e.code === 'VERSION_TOO_OLD';
+      process.exit(installFatal ? 1 : 2);
+    }
+    process.exit(2);
   }
 }
 

@@ -38,23 +38,57 @@ export function spawnOnce(
 ): Promise<SpawnOnceResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
+    // Buffer[] avoids O(n²) string concat on chunked output (multi-MB list responses).
+    const out: Buffer[] = [];
+    const errChunks: Buffer[] = [];
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new Error(`spawn timeout: ${bin} ${args.join(' ')}`));
     }, timeoutMs);
-    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf-8')));
-    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf-8')));
+    child.stdout.on('data', (c: Buffer) => out.push(c));
+    child.stderr.on('data', (c: Buffer) => errChunks.push(c));
     child.on('error', (e) => {
       clearTimeout(timer);
       reject(e);
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode: code });
+      resolve({
+        stdout: Buffer.concat(out).toString('utf-8'),
+        stderr: Buffer.concat(errChunks).toString('utf-8'),
+        exitCode: code,
+      });
     });
   });
+}
+
+/**
+ * Shared spawn-and-classify primitive used by schema-loader and dispatch.
+ * Returns ok({stdout, stderr}) when child exits 0; err DwsError on timeout or non-zero exit.
+ * Callers handle output parsing themselves.
+ */
+export async function runDws(
+  args: string[],
+  ctx: { binaryPath: string; timeoutMs?: number; spawnImpl?: SpawnOnceFn }
+): Promise<Result<{ stdout: string; stderr: string }, DwsError>> {
+  const timeout = ctx.timeoutMs ?? 30_000;
+  const run = ctx.spawnImpl ?? spawnOnce;
+  let result: SpawnOnceResult;
+  try {
+    result = await run(ctx.binaryPath, args, timeout);
+  } catch (e) {
+    return err(makeError('TIMEOUT', `dws ${args.join(' ')}: ${(e as Error).message}`));
+  }
+  if (result.exitCode !== 0) {
+    return err(
+      makeError('NON_ZERO_EXIT', `dws ${args.join(' ')} exit ${result.exitCode}`, {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode ?? -1,
+      })
+    );
+  }
+  return ok({ stdout: result.stdout, stderr: result.stderr });
 }
 
 /**
@@ -153,12 +187,11 @@ export async function probeDws(
   }
 
   const timeout = opts.timeoutMs ?? 10_000;
-  const spawn = opts.spawnImpl ?? spawnOnce;
+  const run = opts.spawnImpl ?? spawnOnce;
 
-  // 版本检查
   let versionResult: SpawnOnceResult;
   try {
-    versionResult = await spawn(binaryPath, ['version'], timeout);
+    versionResult = await run(binaryPath, ['version'], timeout);
   } catch (e) {
     return err(
       makeError('NOT_INSTALLED', `Failed to invoke dws: ${(e as Error).message}`)
@@ -182,13 +215,12 @@ export async function probeDws(
     );
   }
 
-  // auth 状态（不阻塞）
+  // auth 探测失败不致命: 视作未 auth, schema-loader 走降级路径
   let authenticated = false;
   try {
-    const authResult = await spawn(binaryPath, ['auth', 'status'], timeout);
+    const authResult = await run(binaryPath, ['auth', 'status'], timeout);
     authenticated = parseAuthStatus(authResult.stdout);
   } catch {
-    // auth 探测失败不致命，按"未 auth"处理
     authenticated = false;
   }
 

@@ -13,11 +13,7 @@
 import type { DwsError, DwsFlagSpec, DwsToolSpec, Result } from './types.js';
 import { ok, err } from './types.js';
 import { makeError } from './errors.js';
-import { spawnOnce, type SpawnOnceFn, type SpawnOnceResult } from './dws-probe.js';
-
-// ===========================================================================
-// Path 1: dws schema --format json
-// ===========================================================================
+import { runDws, spawnOnce, type SpawnOnceFn } from './dws-probe.js';
 
 interface DwsSchemaProduct {
   id?: string;
@@ -29,56 +25,33 @@ interface DwsSchemaProduct {
 interface DwsSchemaTool {
   name?: string;
   description?: string;
-  /** 命令路径，如 ["todo", "task", "create"]。dws 输出未确认，预留两种形态 */
+  /** dws schema 输出实测尚未确认; 缺失时由 toolName.split('.') 推断 */
   command?: string[];
   parameters?: unknown;
 }
 
-/**
- * dws schema 输出的 parameters 字段是 JSON Schema (Draft 2020-12)。
- * v0 暂不解析为 DwsFlagSpec，直接保留 raw schema，让 server 转 MCP inputSchema。
- *
- * 实测：未 auth 时 products: []，函数返回空数组（非错误）
- */
 export async function loadFromSchemaJson(
   binaryPath: string,
   timeoutMs = 30_000,
   spawnImpl: SpawnOnceFn = spawnOnce
 ): Promise<Result<DwsToolSpec[], DwsError>> {
-  let result: SpawnOnceResult;
+  const r = await runDws(['schema', '--format', 'json'], { binaryPath, timeoutMs, spawnImpl });
+  if (!r.ok) return r;
   try {
-    result = await spawnImpl(binaryPath, ['schema', '--format', 'json'], timeoutMs);
-  } catch (e) {
-    return err(
-      makeError('TIMEOUT', `dws schema timed out: ${(e as Error).message}`)
-    );
-  }
-  if (result.exitCode !== 0) {
-    return err(
-      makeError('NON_ZERO_EXIT', `dws schema exit ${result.exitCode}`, {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode ?? -1,
-      })
-    );
-  }
-  try {
-    const parsed = JSON.parse(result.stdout.trim()) as { products?: DwsSchemaProduct[] };
-    const products = parsed.products ?? [];
+    const parsed = JSON.parse(r.value.stdout.trim()) as { products?: DwsSchemaProduct[] };
     const tools: DwsToolSpec[] = [];
-    for (const product of products) {
+    for (const product of parsed.products ?? []) {
+      const productId = product.id ?? '';
       for (const tool of product.tools ?? []) {
-        // 把 schema 输出的 tool 映射到 DwsToolSpec.
-        // command 字段 dws 实测尚未确认，先按 [productId, toolName.split(".")] 推断
-        const productId = product.id ?? '';
         const toolName = tool.name ?? '';
         const command = tool.command ?? [productId, ...toolName.split('.')].filter(Boolean);
+        // Skip empty paths so we never register "dingtalk." (no tail segment)
+        if (command.length === 0) continue;
         tools.push({
           name: ['dingtalk', ...command].join('.'),
           description: tool.description ?? '',
           command,
-          // v0 schema-json 路径不解析 flags（让 dispatch 直接信任 dws 校验）
-          // 实际 inputSchema 由 server.ts 用 tool.parameters 直接转发
+          // v0: schema-json path doesn't parse flags; dws validates server-side
           flags: [],
         });
       }
@@ -87,23 +60,17 @@ export async function loadFromSchemaJson(
   } catch (e) {
     return err(
       makeError('INVALID_OUTPUT', `Cannot parse dws schema JSON: ${(e as Error).message}`, {
-        stdout: result.stdout,
+        stdout: r.value.stdout,
       })
     );
   }
 }
 
-// ===========================================================================
-// Path 2: dws --help tree walk
-// ===========================================================================
-
 /**
- * 解析 `dws ... --help` 输出（cobra 格式）。
- *
- * 三种情况：
- *  - 有 "Discovered MCP Services:" → 顶层，子项是 service 名（仅 dws 根命令）
- *  - 有 "Available Commands:" → 中间节点，子项是 subcommand 名
- *  - 无上述两者，但有 "Flags:" 段 → leaf 节点，提取 flag 列表
+ * Parse a `dws ... --help` (cobra format) output.
+ *  - Has "Discovered MCP Services:"  → root, subcommands are service names
+ *  - Has "Available Commands:"       → branch, subcommands are children
+ *  - Neither + has "Flags:" section  → leaf, extract flag list
  */
 export interface ParsedHelp {
   isLeaf: boolean;
@@ -224,54 +191,41 @@ export function toFlagSpec(
 }
 
 /**
- * 递归走访 `dws ... --help` 树，产出全部 leaf 命令。
- * 命令路径用 "." 连接：dws todo task create → dingtalk.todo.task.create
+ * Walk `dws ... --help` tree producing all leaf tools. Sibling branches run
+ * in parallel via Promise.all — sequential would be ~16s for ~80 commands at
+ * 200ms each. Peak concurrency is bounded by the dws command tree shape
+ * (~10 services × ~10 leaves ≈ 100 children at worst); fine on desktop hosts,
+ * revisit if running in resource-constrained sandboxes.
  */
 export async function loadFromHelpTree(
   binaryPath: string,
   timeoutMs = 15_000,
   spawnImpl: SpawnOnceFn = spawnOnce
 ): Promise<Result<DwsToolSpec[], DwsError>> {
+  const ctx = { binaryPath, timeoutMs, spawnImpl };
   const tools: DwsToolSpec[] = [];
 
   const visit = async (path: string[]): Promise<void> => {
-    let result: SpawnOnceResult;
-    try {
-      result = await spawnImpl(binaryPath, [...path, '--help'], timeoutMs);
-    } catch {
-      return; // 单分支失败不阻塞兄弟分支
-    }
-    if (result.exitCode !== 0) return;
-    const parsed = parseHelpOutput(result.stdout);
+    const r = await runDws([...path, '--help'], ctx);
+    if (!r.ok) return; // sibling branches keep walking
+    const parsed = parseHelpOutput(r.value.stdout);
 
     if (parsed.isLeaf) {
       tools.push({
         name: ['dingtalk', ...path].join('.'),
-        description: extractDescription(result.stdout),
+        description: extractDescription(r.value.stdout),
         command: path,
         flags: parsed.flags,
       });
       return;
     }
-    // 中间节点：递归子命令
-    for (const sub of parsed.subcommands) {
-      await visit([...path, sub]);
-    }
+    await Promise.all(parsed.subcommands.map((sub) => visit([...path, sub])));
   };
 
-  // 顶层：先列服务名，再逐个递归
-  let rootResult: SpawnOnceResult;
-  try {
-    rootResult = await spawnImpl(binaryPath, ['--help'], timeoutMs);
-  } catch (e) {
-    return err(
-      makeError('TIMEOUT', `dws --help timeout: ${(e as Error).message}`)
-    );
-  }
-  const rootParsed = parseHelpOutput(rootResult.stdout);
-  for (const svc of rootParsed.subcommands) {
-    await visit([svc]);
-  }
+  const rootR = await runDws(['--help'], ctx);
+  if (!rootR.ok) return err(rootR.error);
+  const rootParsed = parseHelpOutput(rootR.value.stdout);
+  await Promise.all(rootParsed.subcommands.map((svc) => visit([svc])));
 
   return ok(tools);
 }
@@ -290,10 +244,6 @@ export function extractDescription(helpOutput: string): string {
   }
   return collected.join(' ');
 }
-
-// ===========================================================================
-// Orchestrator
-// ===========================================================================
 
 export interface LoadResult {
   tools: DwsToolSpec[];

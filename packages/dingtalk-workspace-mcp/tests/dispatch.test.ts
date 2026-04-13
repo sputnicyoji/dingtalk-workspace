@@ -47,51 +47,61 @@ const tool = (flags: DwsFlagSpec[]): DwsToolSpec => ({
   flags,
 });
 
+/** Convenience: assert flagifyOne returns ok and yield the value */
+function unwrap1(key: string, value: unknown, s?: DwsFlagSpec): string[] {
+  const r = flagifyOne(key, value, s);
+  if (!r.ok) throw new Error(`unexpected err: ${r.error.message}`);
+  return r.value;
+}
+
+function unwrap(t: DwsToolSpec, args: Record<string, unknown>): string[] {
+  const r = flagify(t, args);
+  if (!r.ok) throw new Error(`unexpected err: ${r.error.message}`);
+  return r.value;
+}
+
 describe('flagifyOne', () => {
   it('boolean true → switch flag (no value)', () => {
-    expect(flagifyOne('debug', true, undefined)).toEqual(['--debug']);
+    expect(unwrap1('debug', true)).toEqual(['--debug']);
   });
 
   it('boolean false → omitted entirely', () => {
-    expect(flagifyOne('debug', false, undefined)).toEqual([]);
+    expect(unwrap1('debug', false)).toEqual([]);
   });
 
   it('string → --key value', () => {
-    expect(flagifyOne('title', 'hello', undefined)).toEqual(['--title', 'hello']);
+    expect(unwrap1('title', 'hello')).toEqual(['--title', 'hello']);
   });
 
   it('number → --key stringified', () => {
-    expect(flagifyOne('limit', 50, undefined)).toEqual(['--limit', '50']);
+    expect(unwrap1('limit', 50)).toEqual(['--limit', '50']);
   });
 
   it('array of primitives → comma-joined string', () => {
-    expect(flagifyOne('executors', ['u1', 'u2', 'u3'], undefined)).toEqual([
-      '--executors',
-      'u1,u2,u3',
-    ]);
+    expect(unwrap1('executors', ['u1', 'u2', 'u3'])).toEqual(['--executors', 'u1,u2,u3']);
   });
 
   it('array of numbers → comma-joined string', () => {
-    expect(flagifyOne('ids', [1, 2, 3], undefined)).toEqual(['--ids', '1,2,3']);
+    expect(unwrap1('ids', [1, 2, 3])).toEqual(['--ids', '1,2,3']);
   });
 
   it('array WITH json_array spec → JSON.stringify (not comma)', () => {
     const s = spec({ name: 'sort', semanticType: 'json_array' });
-    expect(flagifyOne('sort', [{ field: 'a', dir: 'asc' }], s)).toEqual([
+    expect(unwrap1('sort', [{ field: 'a', dir: 'asc' }], s)).toEqual([
       '--sort',
       '[{"field":"a","dir":"asc"}]',
     ]);
   });
 
   it('array of objects WITHOUT spec → JSON.stringify fallback', () => {
-    expect(flagifyOne('items', [{ a: 1 }, { a: 2 }], undefined)).toEqual([
+    expect(unwrap1('items', [{ a: 1 }, { a: 2 }])).toEqual([
       '--items',
       '[{"a":1},{"a":2}]',
     ]);
   });
 
   it('plain object → JSON.stringify', () => {
-    expect(flagifyOne('filters', { field: 'x', op: 'eq', value: 'y' }, undefined)).toEqual([
+    expect(unwrap1('filters', { field: 'x', op: 'eq', value: 'y' })).toEqual([
       '--filters',
       '{"field":"x","op":"eq","value":"y"}',
     ]);
@@ -99,7 +109,13 @@ describe('flagifyOne', () => {
 
   it('object with json_object spec → JSON.stringify', () => {
     const s = spec({ name: 'filters', semanticType: 'json_object' });
-    expect(flagifyOne('filters', { a: 1 }, s)).toEqual(['--filters', '{"a":1}']);
+    expect(unwrap1('filters', { a: 1 }, s)).toEqual(['--filters', '{"a":1}']);
+  });
+
+  it('returns INVALID_OUTPUT err for unsupported types (e.g. function)', () => {
+    const r = flagifyOne('cb', () => 0, undefined);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('INVALID_OUTPUT');
   });
 });
 
@@ -109,8 +125,10 @@ describe('flagify', () => {
       spec({ name: 'title', semanticType: 'string' }),
       spec({ name: 'desc', semanticType: 'string' }),
     ]);
-    const result = flagify(t, { title: 'hi', desc: null, extra: undefined });
-    expect(result).toEqual(['--title', 'hi']);
+    expect(unwrap(t, { title: 'hi', desc: null, extra: undefined })).toEqual([
+      '--title',
+      'hi',
+    ]);
   });
 
   it('respects spec when picking array vs json branch', () => {
@@ -118,11 +136,7 @@ describe('flagify', () => {
       spec({ name: 'sort', semanticType: 'json_array' }),
       spec({ name: 'tags', semanticType: 'array_of_string' }),
     ]);
-    const result = flagify(t, {
-      sort: [{ field: 'a' }],
-      tags: ['x', 'y'],
-    });
-    expect(result).toEqual([
+    expect(unwrap(t, { sort: [{ field: 'a' }], tags: ['x', 'y'] })).toEqual([
       '--sort',
       '[{"field":"a"}]',
       '--tags',
@@ -132,12 +146,7 @@ describe('flagify', () => {
 
   it('handles tool with no flag specs (fallback heuristics)', () => {
     const t = tool([]);
-    const result = flagify(t, {
-      title: 'hi',
-      ids: [1, 2],
-      meta: { a: 1 },
-    });
-    expect(result).toEqual([
+    expect(unwrap(t, { title: 'hi', ids: [1, 2], meta: { a: 1 } })).toEqual([
       '--title',
       'hi',
       '--ids',
@@ -145,6 +154,12 @@ describe('flagify', () => {
       '--meta',
       '{"a":1}',
     ]);
+  });
+
+  it('propagates flagifyOne err', () => {
+    const t = tool([]);
+    const r = flagify(t, { cb: () => 0 });
+    expect(r.ok).toBe(false);
   });
 });
 

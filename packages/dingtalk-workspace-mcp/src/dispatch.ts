@@ -28,61 +28,47 @@ export interface DispatchResult {
   exitCode: number;
 }
 
-/**
- * 把 MCP arguments object 转成 dws CLI flags。
- *
- * @param tool 调度目标（提供 flag 元信息以做 array/object 分支）
- * @param args MCP tools/call 传入的 arguments 对象
- */
+/** Convert MCP arguments object into dws CLI flag list per ADR-001 §D1. */
 export function flagify(
   tool: DwsToolSpec,
   args: Record<string, unknown>
-): string[] {
+): Result<string[], DwsError> {
   const flagBySpec = new Map(tool.flags.map((f) => [f.name, f]));
   const out: string[] = [];
 
   for (const [key, value] of Object.entries(args)) {
     if (value == null) continue;
-    const spec = flagBySpec.get(key);
-    out.push(...flagifyOne(key, value, spec));
+    const r = flagifyOne(key, value, flagBySpec.get(key));
+    if (!r.ok) return r;
+    out.push(...r.value);
   }
-  return out;
+  return ok(out);
 }
 
 export function flagifyOne(
   key: string,
   value: unknown,
   spec: DwsFlagSpec | undefined
-): string[] {
-  // boolean → switch flag
+): Result<string[], DwsError> {
   if (typeof value === 'boolean') {
-    return value ? [`--${key}`] : [];
+    return ok(value ? [`--${key}`] : []);
   }
-
-  // 简单标量
   if (typeof value === 'string' || typeof value === 'number') {
-    return [`--${key}`, String(value)];
+    return ok([`--${key}`, String(value)]);
   }
-
-  // array：按 spec 分流
   if (Array.isArray(value)) {
     if (spec?.semanticType === 'json_array') {
-      return [`--${key}`, JSON.stringify(value)];
+      return ok([`--${key}`, JSON.stringify(value)]);
     }
-    // array_of_* 或没有 spec → 默认逗号分隔
     if (value.every((v) => typeof v === 'string' || typeof v === 'number')) {
-      return [`--${key}`, value.map(String).join(',')];
+      return ok([`--${key}`, value.map(String).join(',')]);
     }
-    // array of objects 兜底为 JSON
-    return [`--${key}`, JSON.stringify(value)];
+    return ok([`--${key}`, JSON.stringify(value)]);
   }
-
-  // object → JSON 字符串
   if (typeof value === 'object') {
-    return [`--${key}`, JSON.stringify(value)];
+    return ok([`--${key}`, JSON.stringify(value)]);
   }
-
-  throw new Error(`Unsupported value type for --${key}: ${typeof value}`);
+  return err(makeError('INVALID_OUTPUT', `Unsupported value type for --${key}: ${typeof value}`));
 }
 
 /**
@@ -97,24 +83,18 @@ export async function dispatchTool(
   const timeout = options.timeoutMs ?? 120_000;
   const spawnFn = options.spawnImpl ?? spawn;
 
-  let flags: string[];
-  try {
-    flags = flagify(tool, args);
-  } catch (e) {
-    return err(
-      makeError('INVALID_OUTPUT', `Failed to serialize args: ${(e as Error).message}`)
-    );
-  }
-
-  const cliArgs = [...tool.command, ...flags, '--yes', '--format', 'json'];
+  const flagsResult = flagify(tool, args);
+  if (!flagsResult.ok) return flagsResult;
+  const cliArgs = [...tool.command, ...flagsResult.value, '--yes', '--format', 'json'];
 
   return new Promise((resolve) => {
     const child = spawnFn(options.binaryPath, cliArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    let stdout = '';
-    let stderr = '';
+    // Buffer[] avoids O(n²) string concat on chunked outputs (multi-MB lists).
+    const out: Buffer[] = [];
+    const errChunks: Buffer[] = [];
     let killedByTimeout = false;
 
     const timer = setTimeout(() => {
@@ -122,23 +102,27 @@ export async function dispatchTool(
       child.kill('SIGKILL');
     }, timeout);
 
-    child.stdout?.on('data', (c: Buffer) => (stdout += c.toString('utf-8')));
-    child.stderr?.on('data', (c: Buffer) => (stderr += c.toString('utf-8')));
+    child.stdout?.on('data', (c: Buffer) => out.push(c));
+    child.stderr?.on('data', (c: Buffer) => errChunks.push(c));
+
+    const collect = () => ({
+      stdout: Buffer.concat(out).toString('utf-8'),
+      stderr: Buffer.concat(errChunks).toString('utf-8'),
+    });
 
     child.on('error', (e) => {
       clearTimeout(timer);
+      const { stdout, stderr } = collect();
       resolve(
         err(
-          makeError('NOT_INSTALLED', `spawn failed: ${e.message}`, {
-            stdout,
-            stderr,
-          })
+          makeError('NOT_INSTALLED', `spawn failed: ${e.message}`, { stdout, stderr })
         )
       );
     });
 
     child.on('close', (exitCode) => {
       clearTimeout(timer);
+      const { stdout, stderr } = collect();
 
       if (killedByTimeout) {
         resolve(
