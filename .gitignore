@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Reference repos (cloned, not part of this project)
+ref-git/
+
+# Hermes / dingtalk-agent runtime state
+.hermes/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Override global gitignore: this project's docs/ is part of the deliverable
+!docs/
+!docs/**
+
+# Env
+.env
+.env.local
