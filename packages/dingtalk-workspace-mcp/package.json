@@ -1,0 +1,56 @@
+{
+  "name": "@yoji/dingtalk-workspace-mcp",
+  "version": "0.0.1",
+  "description": "dws-driven, dynamic, full-coverage DingTalk MCP server. Host-agnostic. Auto-syncs with dws upgrades, zero maintenance.",
+  "type": "module",
+  "bin": {
+    "dingtalk-workspace-mcp": "./dist/cli.js"
+  },
+  "main": "./dist/server.js",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.0"
+  },
+  "dwsMinVersion": "1.0.7",
+  "keywords": [
+    "mcp",
+    "dingtalk",
+    "dws",
+    "ai-agent",
+    "model-context-protocol",
+    "钉钉"
+  ],
+  "license": "MIT",
+  "author": "Yoji",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sputnicyoji/hermes-dingtalk.git",
+    "directory": "packages/dingtalk-workspace-mcp"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

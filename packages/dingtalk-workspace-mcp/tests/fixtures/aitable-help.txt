@@ -1,0 +1,31 @@
+AI 表格操作
+
+Usage:
+  dws aitable [flags]
+  dws aitable [command]
+
+Available Commands:
+  attachment  附件管理
+  base        Base 管理
+  field       字段管理
+  record      记录管理
+  table       数据表管理
+  template    模板搜索
+
+Flags:
+  -h, --help   help for aitable
+
+Global Flags:
+      --client-id string       Override OAuth client ID (DingTalk AppKey)
+      --client-secret string   Override OAuth client secret (DingTalk AppSecret)
+      --debug                  显示调试日志
+      --dry-run                预览操作内容，不实际执行
+      --fields string          筛选输出字段 (逗号分隔, 如: name,id,status)
+  -f, --format string          输出格式: json|table|raw (default "json")
+      --jq string              jq 表达式过滤输出 (如: '.items[] | .name')
+      --mock                   使用 Mock 数据 (开发调试用)
+      --timeout int            HTTP 请求超时时间 (秒) (default 30)
+  -v, --verbose                显示详细日志
+  -y, --yes                    跳过确认提示 (AI Agent 模式)
+
+Use "dws aitable [command] --help" for more information about a command.

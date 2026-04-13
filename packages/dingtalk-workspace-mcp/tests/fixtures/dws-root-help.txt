@@ -1,0 +1,18 @@
+Discovered MCP Services:
+
+  aitable     AI 表格操作
+  attendance  考勤打卡 / 排班 / 统计
+  calendar    日历日程 / 会议室 / 闲忙
+  chat        群聊 / 会话 / 群组管理
+  contact     通讯录 / 用户 / 部门
+  devdoc      开放平台文档搜索
+  ding        DING 消息 / 发送 / 撤回
+  oa          OA 审批 / 同意 / 拒绝 / 撤销
+  report      日志 / 模版 / 统计
+  todo        待办任务管理
+  workbench   工作台应用查询
+
+Usage:
+  dws <service> [command] [flags]
+
+Use "dws <service> --help" for more information about a discovered MCP service.
