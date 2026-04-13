@@ -84,7 +84,7 @@ Claude Desktop / Cursor / Codex（`mcp.json` / 等价配置）：
   "mcpServers": {
     "dingtalk": {
       "command": "npx",
-      "args": ["-y", "@yoji/dingtalk-workspace-mcp"]
+      "args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
     }
   }
 }
@@ -96,7 +96,7 @@ Hermes Agent：
 mcp_servers:
   dingtalk:
     command: "npx"
-    args: ["-y", "@yoji/dingtalk-workspace-mcp"]
+    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
     timeout: 180
 ```
 

@@ -15,7 +15,7 @@ on:
 
 jobs:
   publish:
-    name: Publish @yoji/dingtalk-workspace-mcp
+    name: Publish @sputnicyoji/dingtalk-workspace-mcp
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -124,7 +124,7 @@ create_job(
 mcp_servers:
   dingtalk:
     command: "npx"
-    args: ["-y", "@yoji/dingtalk-workspace-mcp"]
+    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
     timeout: 180         # 可选, 默认 120
     connect_timeout: 60  # 可选, 默认 60
 ```
@@ -135,7 +135,7 @@ mcp_servers:
 3. 用户跑 `dws auth login` 完成 OAuth device-flow
 
 完成后，Hermes 启动时自动：
-- spawn `npx -y @yoji/dingtalk-workspace-mcp`（首次拉包 10-30s，含进度日志走 stderr）
+- spawn `npx -y @sputnicyoji/dingtalk-workspace-mcp`（首次拉包 10-30s，含进度日志走 stderr）
 - T1 启动时调 `dws schema` 动态生成 tool list
 - Hermes 通过 MCP `tools/list` 拿到全部 `dingtalk.*` tool
 - agent 可以直接调用，例如 `dingtalk.todo.task_create({title: "...", executors: [...]})`
@@ -161,7 +161,7 @@ mcp_servers:
 
 **形态**：纯 yaml + markdown，无运行时代码
 
-**安装**：`npx @yoji/dingtalk-workspace-mcp install-cron-templates` 拷贝到 `~/.hermes/cron/templates/dingtalk/`（路径约定，需要确认 Hermes 是否支持模板目录；如不支持，则改为生成 `hermes cronjob create ...` 的命令脚本）
+**安装**：`npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates` 拷贝到 `~/.hermes/cron/templates/dingtalk/`（路径约定，需要确认 Hermes 是否支持模板目录；如不支持，则改为生成 `hermes cronjob create ...` 的命令脚本）
 
 **模板文件示例**（`daily_brief.yaml`）：
 ```yaml
@@ -304,11 +304,11 @@ T1 启动期硬依赖 `dws schema --format json`。
 
 | # | 交付物 | 形态 | 用户接入命令 | 版本 |
 |---|--------|------|------------|------|
-| 1 | `@yoji/dingtalk-workspace-mcp` | npm scoped public 包 | 改 `~/.hermes/config.yaml` 加 4 行 + `dws auth login` | v0 |
+| 1 | `@sputnicyoji/dingtalk-workspace-mcp` | npm scoped public 包 | 改 `~/.hermes/config.yaml` 加 4 行 + `dws auth login` | v0 |
 | 2 | `docs/COMPARISON.md` | 项目文档 | 阅读 | v0.1 |
-| 3 | ext-cron-templates 文件包 | `~/.hermes/cron/templates/dingtalk/*.yaml` | `npx @yoji/dingtalk-workspace-mcp install-cron-templates` | v0.1 |
+| 3 | ext-cron-templates 文件包 | `~/.hermes/cron/templates/dingtalk/*.yaml` | `npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates` | v0.1 |
 | 4 | ext-stateful-watch | Python 脚本包 + cron 模板 | `pipx install` 或 `pip install --user` 后跑 install 脚本 | v0.2 |
-| 5 | ext-long-content | Hermes skill 包 | `npx @yoji/dingtalk-workspace-mcp install-skills` 拷到 `~/.hermes/skills/dingtalk/` | v0.3 |
+| 5 | ext-long-content | Hermes skill 包 | `npx @sputnicyoji/dingtalk-workspace-mcp install-skills` 拷到 `~/.hermes/skills/dingtalk/` | v0.3 |
 
 **Hermes 用户的"完整体验栈"**（v0.3 全部就位后）：
 
@@ -321,7 +321,7 @@ dws auth login
 # 编辑配置，加 4 行
 
 # 3. 装 cron 模板包 (v0.1)
-npx @yoji/dingtalk-workspace-mcp install-cron-templates
+npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates
 hermes cronjob create --from ~/.hermes/cron/templates/dingtalk/daily_brief.yaml
 
 # 4. 装状态化告警 (v0.2)
@@ -330,7 +330,7 @@ yoji-stateful-watch install
 hermes cronjob create --from ~/.hermes/dingtalk-extensions/templates/unreplied_mentions.yaml
 
 # 5. 装会议纪要 skill (v0.3)
-npx @yoji/dingtalk-workspace-mcp install-skills
+npx @sputnicyoji/dingtalk-workspace-mcp install-skills
 hermes skills enable dingtalk/meeting_followup
 ```
 

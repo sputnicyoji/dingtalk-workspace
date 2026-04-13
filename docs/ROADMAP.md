@@ -10,7 +10,7 @@
 **目标**：任何 MCP host（Hermes/Cursor/Claude Desktop/Codex）加 4 行配置即可调用 dws 全部能力。
 
 **范围**：
-- `@yoji/dingtalk-workspace-mcp` npm 包首发
+- `@sputnicyoji/dingtalk-workspace-mcp` npm 包首发
 - 启动时 `dws schema` 动态生成 tool（dingtalk.<product>.<action> 命名空间）
 - dispatch 层处理 args → CLI flags 映射
 - 错误归一化（dws 未装 / auth 过期 / timeout）
@@ -18,7 +18,7 @@
 - README 含"两步接入"文档（含至少 3 个 host 的配置示例）
 
 **退出标准**：
-- [ ] `npx -y @yoji/dingtalk-workspace-mcp` 冷启动 < 30s ready
+- [ ] `npx -y @sputnicyoji/dingtalk-workspace-mcp` 冷启动 < 30s ready
 - [ ] Hermes / Claude Desktop 各自接入后能成功调 `dingtalk.todo.task_create` + `dingtalk.contact.user_get_self`
 - [ ] `dws aitable record query` 嵌套 `filter` 参数能正确传递（参数序列化硬骨头）
 - [ ] auth 未完成时降级到 `dingtalk.bootstrap` tool，不崩溃
@@ -40,7 +40,7 @@
 - `docs/COMPARISON.md`：对比表（vs `wllcnm/dingding0646`、`claude-code-community/dingtalk-mcp-server`、`fishwww-ww/dingtalk-mcp`、`ianen/dingtalk-wiki-mcp`、官方 `DingTalk Agent Client`）
   - 维度：覆盖产品数、是否随 dws 升级自动同步、host 中立性、安装复杂度、auth 模型
 - `hermes-extensions/ext-cron-templates/` 首发：3-5 份 prompt 模板（daily_brief / weekly_report / monthly_summary / overdue_todos / attendance_digest）
-- 安装脚本：`npx @yoji/dingtalk-workspace-mcp install-cron-templates`
+- 安装脚本：`npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates`
 
 **退出标准**：
 - [ ] T1 连续运行 1 周无崩溃

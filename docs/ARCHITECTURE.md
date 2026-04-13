@@ -164,14 +164,14 @@ incoming: tools/call { name: "dingtalk.todo.task_create", arguments: {...} }
 
 ### 3.7 发行
 
-- npm scoped public 包：`@yoji/dingtalk-workspace-mcp`
+- npm scoped public 包：`@sputnicyoji/dingtalk-workspace-mcp`
 - 用户配置（任意 MCP host）：
   ```yaml
   # Hermes 示例
   mcp_servers:
     dingtalk:
       command: "npx"
-      args: ["-y", "@yoji/dingtalk-workspace-mcp"]
+      args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
       timeout: 180
   ```
 - GitHub Actions：tag push → `npm publish` + GitHub Release
@@ -269,7 +269,7 @@ hermes-extensions/ext-long-content/
 
 **做的事**：
 - 提供 3-5 份高质量 cron prompt（日报、周报、月报、待办催办、考勤汇总）
-- 提供安装脚本：`npx @yoji/dingtalk-workspace-mcp install-cron-templates` → 拷贝到 `~/.hermes/cron/templates/dingtalk/`
+- 提供安装脚本：`npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates` → 拷贝到 `~/.hermes/cron/templates/dingtalk/`
 - 用户启用方式：`hermes cronjob create --from <模板路径>`（具体命令以 v0.1 实测为准）
 
 **⚠ v0.1 实施前必须验证**：Hermes 当前 `cron/jobs.py` 的 `create_job()` 接受 prompt/schedule/skills/deliver/script 等结构化参数，但**未在源码中确认是否存在"模板目录约定"或"`--from <yaml>`"CLI 子命令**。两种实施分支：

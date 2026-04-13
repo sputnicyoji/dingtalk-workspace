@@ -41,7 +41,7 @@ function parseArgs(argv: string[]): CliArgs {
 function printHelp(): void {
   process.stdout.write(
     [
-      '@yoji/dingtalk-workspace-mcp — DingTalk MCP server (dws-driven)',
+      '@sputnicyoji/dingtalk-workspace-mcp — DingTalk MCP server (dws-driven)',
       '',
       'Usage: dingtalk-workspace-mcp [flags]',
       '',

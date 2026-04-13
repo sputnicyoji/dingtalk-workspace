@@ -17,7 +17,7 @@ import { dispatchTool } from './dispatch.js';
 import { formatError, ProbeFatalError } from './errors.js';
 import type { DwsFlagSpec, DwsProbeResult, DwsToolSpec } from './types.js';
 
-const SERVER_NAME = '@yoji/dingtalk-workspace-mcp';
+const SERVER_NAME = '@sputnicyoji/dingtalk-workspace-mcp';
 const SERVER_VERSION = '0.0.1';
 
 export interface ServerOptions {

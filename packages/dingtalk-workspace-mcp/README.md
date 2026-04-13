@@ -1,4 +1,4 @@
-# @yoji/dingtalk-workspace-mcp
+# @sputnicyoji/dingtalk-workspace-mcp
 
 > dws-driven, dynamic, full-coverage DingTalk MCP server. Host-agnostic. Auto-syncs with `dws` upgrades — zero maintenance.
 
@@ -32,7 +32,7 @@ dws auth login
 mcp_servers:
   dingtalk:
     command: "npx"
-    args: ["-y", "@yoji/dingtalk-workspace-mcp"]
+    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
     timeout: 180
 ```
 
@@ -42,7 +42,7 @@ mcp_servers:
   "mcpServers": {
     "dingtalk": {
       "command": "npx",
-      "args": ["-y", "@yoji/dingtalk-workspace-mcp"]
+      "args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
     }
   }
 }
