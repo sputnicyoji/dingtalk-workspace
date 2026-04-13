@@ -12,58 +12,27 @@
 
 import type { DwsError, DwsFlagSpec, DwsToolSpec, Result } from './types.js';
 import { ok, err } from './types.js';
-import { makeError } from './errors.js';
 import { runDws, spawnOnce, type SpawnOnceFn } from './dws-probe.js';
 
-interface DwsSchemaProduct {
-  id?: string;
-  name?: string;
-  description?: string;
-  tools?: DwsSchemaTool[];
-}
-
-interface DwsSchemaTool {
-  name?: string;
-  description?: string;
-  /** dws schema 输出实测尚未确认; 缺失时由 toolName.split('.') 推断 */
-  command?: string[];
-  parameters?: unknown;
-}
-
+/**
+ * `dws schema --format json` exposes dws's *MCP runtime* tool surface (snake_case
+ * names like `create_personal_todo`), which is **distinct** from the CLI command
+ * tree (`dws todo task create`). The two surfaces differ in count, naming, and
+ * grouping; there is no mechanical name → CLI path mapping.
+ *
+ * Since this wrapper dispatches via `spawn(dws <cli-path>)`, only CLI tools are
+ * reachable. Calling `dws mcp` (the runtime that would serve the schema-json
+ * tools) is currently a "Reserved" surface upstream — see ADR-002.
+ *
+ * Function kept as a stub so the loadAll fallback chain still compiles; it
+ * always returns ok([]), forcing help-tree to be the source of truth.
+ */
 export async function loadFromSchemaJson(
-  binaryPath: string,
-  timeoutMs = 30_000,
-  spawnImpl: SpawnOnceFn = spawnOnce
+  _binaryPath: string,
+  _timeoutMs = 30_000,
+  _spawnImpl: SpawnOnceFn = spawnOnce
 ): Promise<Result<DwsToolSpec[], DwsError>> {
-  const r = await runDws(['schema', '--format', 'json'], { binaryPath, timeoutMs, spawnImpl });
-  if (!r.ok) return r;
-  try {
-    const parsed = JSON.parse(r.value.stdout.trim()) as { products?: DwsSchemaProduct[] };
-    const tools: DwsToolSpec[] = [];
-    for (const product of parsed.products ?? []) {
-      const productId = product.id ?? '';
-      for (const tool of product.tools ?? []) {
-        const toolName = tool.name ?? '';
-        const command = tool.command ?? [productId, ...toolName.split('.')].filter(Boolean);
-        // Skip empty paths so we never register "dingtalk." (no tail segment)
-        if (command.length === 0) continue;
-        tools.push({
-          name: ['dingtalk', ...command].join('.'),
-          description: tool.description ?? '',
-          command,
-          // v0: schema-json path doesn't parse flags; dws validates server-side
-          flags: [],
-        });
-      }
-    }
-    return ok(tools);
-  } catch (e) {
-    return err(
-      makeError('INVALID_OUTPUT', `Cannot parse dws schema JSON: ${(e as Error).message}`, {
-        stdout: r.value.stdout,
-      })
-    );
-  }
+  return ok([]);
 }
 
 /**
@@ -254,25 +223,12 @@ export interface LoadResult {
 
 export async function loadAll(
   binaryPath: string,
-  authenticated: boolean,
+  _authenticated: boolean,
   spawnImpl: SpawnOnceFn = spawnOnce
 ): Promise<LoadResult> {
-  const attempts: LoadResult['attempts'] = [];
-
-  if (authenticated) {
-    const schemaR = await loadFromSchemaJson(binaryPath, undefined, spawnImpl);
-    if (schemaR.ok && schemaR.value.length > 0) {
-      attempts.push({ path: 'schema-json', ok: true });
-      return { tools: schemaR.value, source: 'schema-json', attempts };
-    }
-    attempts.push({
-      path: 'schema-json',
-      ok: false,
-      reason: schemaR.ok ? 'empty products' : schemaR.error.message,
-    });
-  } else {
-    attempts.push({ path: 'schema-json', ok: false, reason: 'not authenticated' });
-  }
+  const attempts: LoadResult['attempts'] = [
+    { path: 'schema-json', ok: false, reason: 'stubbed (see ADR-002): MCP surface != CLI surface' },
+  ];
 
   const helpR = await loadFromHelpTree(binaryPath, undefined, spawnImpl);
   if (helpR.ok && helpR.value.length > 0) {

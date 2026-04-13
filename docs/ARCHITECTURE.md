@@ -104,20 +104,24 @@ packages/dingtalk-workspace-mcp/
 
 ### 3.3 启动流程
 
+> Schema 发现策略由 [ADR-002](decisions/002-dws-dual-tool-surfaces.md) 修订：
+> `dws schema --format json` 暴露的是与 CLI 不同的 MCP 表面（snake_case，不可机械还原 CLI 路径），
+> 故下线 schema-json 路径，help-tree 成为唯一权威源。
+
 ```
 1. 解析 argv (flags: --verbose, --timeout)
 2. dws-probe:
    a. which dws → 失败: exit 1 + 安装链接
    b. dws --version → 校验 ≥ 最低支持版本
-   c. dws auth status → 未登录: 降级模式 (只暴露 bootstrap tool)
-3. schema-loader:
-   a. exec `dws schema --format json` (超时 30s)
-   b. 解析为 { products: [{ id, tools: [{ name, description, parameters }] }] }
-   c. 每个 tool 转成 MCP ToolDefinition:
-      - name: `dingtalk.<product>.<action>` (点号命名空间)
-      - description: dws 的 description 字段
-      - inputSchema: dws parameters → JSON Schema (Draft 2020-12)
-4. server.ts 注册所有 tools, 启动 stdio transport
+   c. dws auth status → 信息性 (不影响 schema 发现, 仅决定是否注册 bootstrap)
+3. schema-loader.loadAll:
+   a. schema-json 路径 → 始终 stub 返回空 (ADR-002)
+   b. dws --help 树形并发遍历 (Promise.all, ~5s 完成 ~80 tools)
+   c. 每个 leaf cobra 输出 → ParsedHelp → DwsToolSpec:
+      - name: dingtalk.<service>.<...>.<action> (CLI 路径用点号连接)
+      - description: cobra 顶部 1-2 行
+      - flags: 解析 Flags 段, 按 ADR-001 §D1 提升语义类型
+4. server.ts 注册全部 tools (+ bootstrap 当 auth=false), 启动 stdio transport
 5. ready, 长驻
 ```
 

@@ -95,6 +95,13 @@ function flagify(key: string, value: unknown, fieldHint?: string): string[] {
 
 ### D2：Schema 发现策略 —— 双轨 + 优雅降级
 
+> **⚠ Superseded by [ADR-002](002-dws-dual-tool-surfaces.md) (2026-04-13)**
+>
+> Auth 后实测发现 `dws schema --format json` 暴露的是与 CLI 不同的 MCP 表面，
+> 名字无法机械还原成 CLI 路径。下方"双轨"策略实际从未真正命中 schema-json 路径（除空 products 退化情况）。
+> 现行实现：help-tree 单轨 + bootstrap-only 兜底。本节文字保留作为历史记录。
+
+
 T1 启动时按以下顺序尝试：
 
 1. **优先：`dws schema --format json`** —— auth 后返回完整 JSON Schema

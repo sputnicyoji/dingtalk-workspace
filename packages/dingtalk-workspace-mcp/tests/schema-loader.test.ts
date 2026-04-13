@@ -167,65 +167,16 @@ function makeFixtureSpawn(
   });
 }
 
-describe('loadFromSchemaJson', () => {
-  it('returns empty tools when products array empty (auth-gated state)', async () => {
-    const spawnFn = vi.fn(async (): Promise<SpawnOnceResult> => ({
-      stdout: '{"count":0,"kind":"schema","products":[]}',
-      stderr: '',
-      exitCode: 0,
-    }));
+describe('loadFromSchemaJson (stubbed — see ADR-002)', () => {
+  // dws schema 表面是 MCP runtime 工具集 (snake_case 名), 与 CLI 命令树不同;
+  // 名字无法机械还原成 CLI 路径, 故无法通过 spawn(dws ...) 调度. v0 起始终返回空,
+  // 强制 loadAll 走 help-tree. 这条测试守住 stub 行为, 防回退到带副作用实现.
+  it('always returns ok([]) regardless of input (no spawn invoked)', async () => {
+    const spawnFn = vi.fn();
     const r = await loadFromSchemaJson('/fake/dws', 5_000, spawnFn);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value).toEqual([]);
-  });
-
-  it('parses populated schema into DwsToolSpec[]', async () => {
-    const spawnFn = vi.fn(async (): Promise<SpawnOnceResult> => ({
-      stdout: JSON.stringify({
-        products: [
-          {
-            id: 'todo',
-            tools: [
-              {
-                name: 'task.create',
-                description: 'Create todo',
-              },
-            ],
-          },
-        ],
-      }),
-      stderr: '',
-      exitCode: 0,
-    }));
-    const r = await loadFromSchemaJson('/fake/dws', 5_000, spawnFn);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.value).toHaveLength(1);
-      expect(r.value[0]?.name).toBe('dingtalk.todo.task.create');
-      expect(r.value[0]?.command).toEqual(['todo', 'task', 'create']);
-    }
-  });
-
-  it('returns INVALID_OUTPUT on bad JSON', async () => {
-    const spawnFn = vi.fn(async (): Promise<SpawnOnceResult> => ({
-      stdout: 'not json',
-      stderr: '',
-      exitCode: 0,
-    }));
-    const r = await loadFromSchemaJson('/fake/dws', 5_000, spawnFn);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.code).toBe('INVALID_OUTPUT');
-  });
-
-  it('returns NON_ZERO_EXIT on dws failure', async () => {
-    const spawnFn = vi.fn(async (): Promise<SpawnOnceResult> => ({
-      stdout: '',
-      stderr: 'oops',
-      exitCode: 2,
-    }));
-    const r = await loadFromSchemaJson('/fake/dws', 5_000, spawnFn);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.code).toBe('NON_ZERO_EXIT');
+    expect(spawnFn).not.toHaveBeenCalled();
   });
 });
 
@@ -273,34 +224,8 @@ describe('loadFromHelpTree', () => {
 });
 
 describe('loadAll orchestration', () => {
-  it('uses schema-json when authenticated and schema returns tools', async () => {
+  it('uses help-tree as the sole tool source (schema-json stubbed)', async () => {
     const spawnFn = vi.fn(async (_bin: string, args: string[]): Promise<SpawnOnceResult> => {
-      if (args[0] === 'schema') {
-        return {
-          stdout: JSON.stringify({
-            products: [{ id: 'todo', tools: [{ name: 'task.list', description: 'List todo' }] }],
-          }),
-          stderr: '',
-          exitCode: 0,
-        };
-      }
-      return { stdout: '', stderr: '', exitCode: 0 };
-    });
-    const r = await loadAll('/fake/dws', true, spawnFn);
-    expect(r.source).toBe('schema-json');
-    expect(r.tools).toHaveLength(1);
-  });
-
-  it('falls back to help-tree when schema empty', async () => {
-    const spawnFn = vi.fn(async (_bin: string, args: string[]): Promise<SpawnOnceResult> => {
-      if (args[0] === 'schema') {
-        return {
-          stdout: '{"products":[]}',
-          stderr: '',
-          exitCode: 0,
-        };
-      }
-      // root help with one service "todo", "todo" leaf with one flag
       const argsKey = args.filter((a) => a !== '--help').join(' ');
       if (argsKey === '') {
         return {
@@ -322,9 +247,13 @@ describe('loadAll orchestration', () => {
     const r = await loadAll('/fake/dws', true, spawnFn);
     expect(r.source).toBe('help-tree');
     expect(r.tools.length).toBeGreaterThan(0);
+    // schema-json attempt always recorded as skipped per ADR-002
+    expect(r.attempts[0]?.path).toBe('schema-json');
+    expect(r.attempts[0]?.ok).toBe(false);
+    expect(r.attempts[0]?.reason).toMatch(/stubbed/);
   });
 
-  it('returns bootstrap-only when both paths fail', async () => {
+  it('returns bootstrap-only when help-tree empty', async () => {
     const spawnFn = vi.fn(async (): Promise<SpawnOnceResult> => ({
       stdout: '',
       stderr: '',
