@@ -1,0 +1,66 @@
+name: Publish
+
+# Publish to npm when a tag matching v* is pushed.
+# Tag must match the package.json version (script enforces).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip npm publish)'
+        required: false
+        default: 'false'
+
+jobs:
+  publish:
+    name: Publish @yoji/dingtalk-workspace-mcp
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # for npm provenance
+    defaults:
+      run:
+        working-directory: packages/dingtalk-workspace-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/dingtalk-workspace-mcp/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME (=$tag_version) does not match package.json version ($pkg_version)"
+            exit 1
+          fi
+
+      - name: Publish (dry-run)
+        if: github.event.inputs.dry_run == 'true'
+        run: npm publish --access public --provenance --dry-run
+
+      - name: Publish
+        if: github.event.inputs.dry_run != 'true'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
