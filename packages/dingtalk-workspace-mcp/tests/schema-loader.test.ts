@@ -264,3 +264,67 @@ describe('loadAll orchestration', () => {
     expect(r.tools).toEqual([]);
   });
 });
+
+// 三个回归 fixture：对应 2026-04-15 MCP 工具测试报告里被标记的 "参数问题"。
+// 经 dws dry-run 验证，这三条 CLI 自身工作正常；测试核心是证明
+// T1 help-tree 解析后的 DwsToolSpec 和真实 CLI 契约一致。
+describe('regression: 2026-04-15 test report parameter issues', () => {
+  it('todo task delete: --yes 是布尔 flag，不是字符串（BUG FIX）', () => {
+    // 根因：原 FLAG_LINE_RE 把 `--yes Skip confirmation...` 里的 Skip 当类型词，
+    // 归一化为 rawType='string'，导致 MCP 把 yes 暴露成 string；agent 传 true
+    // 布尔后 dispatch 导出 `--yes true`，dws 把 true 当成位置参数报错。
+    const result = parseHelpOutput(fx('todo-task-delete-help.txt'));
+    expect(result.isLeaf).toBe(true);
+
+    const yesFlag = result.flags.find((f) => f.name === 'yes');
+    expect(yesFlag).toBeDefined();
+    expect(yesFlag?.rawType).toBe('bool');
+    expect(yesFlag?.semanticType).toBe('boolean');
+    // description 必须完整保留，不能被类型词吞掉第一个单词
+    expect(yesFlag?.description).toMatch(/^Skip confirmation/);
+
+    // task-id 仍然正常解析为 string + required
+    const taskId = result.flags.find((f) => f.name === 'task-id');
+    expect(taskId?.semanticType).toBe('string');
+    expect(taskId?.required).toBe(true);
+  });
+
+  it('oa approval list-initiated: flag 名字直接取 CLI 名不转 camelCase（契约确认）', () => {
+    // bug 报告"参数格式不正确"的最可能解释是 agent 侧传了 startTime/endTime
+    // （dws 描述里的 API 字段名）而非 start/end（真实 CLI flag 名）。
+    // 此测试守住：T1 暴露给 MCP 的 key 就是 CLI flag 原名。
+    const result = parseHelpOutput(fx('oa-approval-list-initiated-help.txt'));
+    expect(result.isLeaf).toBe(true);
+
+    const names = result.flags.map((f) => f.name).sort();
+    expect(names).toEqual([
+      'end',
+      'max-results',
+      'next-token',
+      'process-code',
+      'start',
+    ]);
+    // 反向兜底：不得出现 camelCase 变体
+    expect(names).not.toContain('startTime');
+    expect(names).not.toContain('endTime');
+  });
+
+  it('report create: --contents 语义提升为 json_array（契约确认）', () => {
+    // bug 报告"内容格式需验证"——dispatch 对 json_array 的处理已在
+    // dispatch.test.ts 覆盖（数组 → JSON.stringify 整体传一个 flag）。
+    // 此测试守住：help-tree 侧要把 --contents 打成 json_array 才能触发正确路径。
+    const result = parseHelpOutput(fx('report-create-help.txt'));
+    expect(result.isLeaf).toBe(true);
+
+    const contents = result.flags.find((f) => f.name === 'contents');
+    expect(contents).toBeDefined();
+    expect(contents?.rawType).toBe('string');
+    expect(contents?.semanticType).toBe('json_array');
+    expect(contents?.required).toBe(true);
+
+    // to-chat 是 cobra 布尔 flag（description 起首词是 "是否"），需正确识别
+    const toChat = result.flags.find((f) => f.name === 'to-chat');
+    expect(toChat?.rawType).toBe('bool');
+    expect(toChat?.semanticType).toBe('boolean');
+  });
+});

@@ -47,7 +47,12 @@ export interface ParsedHelp {
   flags: DwsFlagSpec[];
 }
 
-const FLAG_LINE_RE = /^\s{2,}(?:-\w,\s+)?--(\S+)(?:\s+(\w+))?\s+(.*)$/;
+// 类型词白名单：仅 cobra 为 string/int flag 打印的类型字。
+// 布尔 flag 在 cobra 里不打印类型，故 (string|int)? 可选组未命中 = boolean。
+// 过去用 (\w+)? 会把描述首词（如 "Skip confirmation..."）误吞为类型词，
+// 导致 `--yes` 这类无类型布尔被归一化成 string，dispatch 层再翻译时
+// 把 agent 传入的 true 误导出成 `--yes true` 让 dws 当成位置参数报错。
+const FLAG_LINE_RE = /^\s{2,}(?:-\w,\s+)?--(\S+)(?:\s+(string|int))?\s+(.*)$/;
 // 子命令行：cobra 通常 2+ 空格分隔列，但当命令名超过列宽时只插 1 空格，
 // 实测 dws v1.0.8 `chat bot message` 下 `send-by-webhook` 即此情况。放宽到 \s+。
 const SUBCMD_LINE_RE = /^\s{2,}(\S+)\s+(\S.*)?$/;
@@ -123,8 +128,13 @@ export function toFlagSpec(
   rawTypeStr: string,
   description: string
 ): DwsFlagSpec {
+  // 约定：空 rawTypeStr 源于 cobra 对 bool flag 不打印类型字（见 FLAG_LINE_RE 注释）
+  // 'bool' 分支留给直接调用 toFlagSpec 的单测；真实 help 输出永远走 '' 路径
   const rawType: DwsFlagSpec['rawType'] =
-    rawTypeStr === 'int' ? 'int' : rawTypeStr === 'bool' ? 'bool' : 'string';
+    rawTypeStr === 'int' ? 'int'
+      : rawTypeStr === 'bool' ? 'bool'
+      : rawTypeStr === 'string' ? 'string'
+      : 'bool';
   const required = /\(required\)|\(必填\)/.test(description);
   const descLower = description.toLowerCase();
   const hasJsonHint = /\bjson\b/i.test(description);
