@@ -31,6 +31,32 @@
 2. **T1**：dws 升级新增产品/能力，wrapper **不改一行代码**自动暴露
 3. **T2**：每个 ext 必须证明"离开 Hermes 独家能力做不出"，否则不立项
 
+### 1.4 为什么不走其他路径（反面论证）
+
+接入"钉钉 → agent host"的候选路径一共就四条。本项目选 dws-driven dynamic wrapper 不是偏好，是**其他三条都有硬伤**。
+
+**路径 A：手写固定 MCP（现存 5+ 实现走的路）**
+- 覆盖不全：每家只写 20-30 个高频 tool，考勤/日报/AI 表格/审批常年缺席
+- **dws 升级即坏**：钉钉走 "CLI + MCP 广场" 路线，dws 会持续加料——手写方案本质是债务工厂
+- 每个 MCP host 都要重新接一遍（Claude Desktop / Cursor / Codex / Hermes）
+
+**路径 B：自建第一方 CLI / 直连钉钉 API**
+- 要复刻的不只是命令行，是整个 OAuth 身份域：客户端注册、token 生命周期、自动刷新、多租户、企业 corpId 隔离
+- **权限审批是组织级门槛**：钉钉开放平台每个能力域（考勤/日志/通讯录/审批）独立申请审批——第三方重走一遍等于**你要做一个钉钉 ISV**，个人开发者根本拿不到
+- dws 作为官方 CLI 已经内置这一切，调它 = 白嫖官方身份域，这是最硬的护城河
+
+**路径 C：做 Hermes 原生 plugin（不走 MCP）**
+- 只服务 Hermes 一家，放弃所有其他 MCP host
+- Hermes plugin 系统当前只接 memory / context engine 两类 ABC，不是通用 tool plugin 机制（详见 §4.2）
+- 要做就得 fork Hermes，不可接受
+
+**路径 D：dws-driven dynamic MCP wrapper（本项目）**
+- 协议翻译一层，不碰身份、不碰 token、不碰业务逻辑
+- dws 升级 → `npx` 新版本 → **零改代码自动覆盖**
+- 所有 MCP host 通用，投入产出比最大
+
+**一句话**：身份 / 权限 / 业务域由 dws 承担，本项目只做 "CLI protocol ↔ MCP protocol" 的无状态翻译。这个边界一旦被破坏（T1 引入任何 token 管理、业务逻辑、host 假设），本项目就退化回路径 A 或 C，丧失战略价值。
+
 ---
 
 ## 2. T1 / T2 双轨结构
