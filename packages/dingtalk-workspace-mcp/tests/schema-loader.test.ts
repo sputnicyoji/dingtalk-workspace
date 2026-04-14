@@ -89,13 +89,29 @@ describe('parseHelpOutput', () => {
 });
 
 describe('toFlagSpec — semantic type promotion (ADR-001 §D2)', () => {
-  it('detects required via 中文 (必填)', () => {
+  it('detects required via 中文 (必填) 半角括号', () => {
     const spec = toFlagSpec('table-id', 'string', 'Table ID (必填)');
+    expect(spec.required).toBe(true);
+  });
+
+  it('detects required via 中文 （必填） 全角括号（dws v1.0.8 attendance.summary）', () => {
+    // BUG FIX 2026-04-14：原正则只匹配半角 (必填)，全角 （必填） 漏标成 optional；
+    // attendance.summary 的 --user / --date 因此被错误地暴露为可选，LLM 可能漏传
+    const spec = toFlagSpec(
+      'date',
+      'string',
+      '工作日期，格式 yyyy-MM-dd HH:mm:ss，如 2026-03-12 15:00:00（必填）'
+    );
     expect(spec.required).toBe(true);
   });
 
   it('detects required via English (required)', () => {
     const spec = toFlagSpec('title', 'string', 'Todo title (required)');
+    expect(spec.required).toBe(true);
+  });
+
+  it('detects required via English （required）全角括号', () => {
+    const spec = toFlagSpec('title', 'string', 'Todo title （required）');
     expect(spec.required).toBe(true);
   });
 
@@ -307,6 +323,19 @@ describe('regression: 2026-04-15 test report parameter issues', () => {
     // 反向兜底：不得出现 camelCase 变体
     expect(names).not.toContain('startTime');
     expect(names).not.toContain('endTime');
+  });
+
+  it('attendance summary: --user / --date 全角（必填）被正确识别为 required（BUG FIX）', () => {
+    // 2026-04-14 MCP probe 发现：29 个 tool 在 schema 中 required=[]，其中
+    // attendance.summary 实际 dws help 明标 --user 与 --date 均必填，只是用了
+    // 全角括号。原正则漏匹配，LLM 可能漏传必需参数。
+    const result = parseHelpOutput(fx('attendance-summary-help.txt'));
+    expect(result.isLeaf).toBe(true);
+
+    const date = result.flags.find((f) => f.name === 'date');
+    const user = result.flags.find((f) => f.name === 'user');
+    expect(date?.required).toBe(true);
+    expect(user?.required).toBe(true);
   });
 
   it('report create: --contents 语义提升为 json_array（契约确认）', () => {

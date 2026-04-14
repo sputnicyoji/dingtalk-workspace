@@ -135,7 +135,9 @@ export function toFlagSpec(
       : rawTypeStr === 'bool' ? 'bool'
       : rawTypeStr === 'string' ? 'string'
       : 'bool';
-  const required = /\(required\)|\(必填\)/.test(description);
+  // dws v1.0.8 混用半角 `(必填)` 和全角 `（必填）` 标记必填字段；
+  // 例：attendance.summary 的 --user / --date 用全角，之前被漏标成 optional
+  const required = /[(（](?:required|必填)[)）]/.test(description);
   const descLower = description.toLowerCase();
   const hasJsonHint = /\bjson\b/i.test(description);
   const hasJsonArrayHint = /json\s*(?:数组|array)/i.test(description);
