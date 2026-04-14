@@ -26,11 +26,6 @@
 
 ## 所有模板必须内置的通用契约
 
-2026-04-14 MCP probe 发现 82 tools 里 75 个参数名是 kebab-case（dws 原生），而 LLM 天然偏 camelCase——**不加提示就大概率踩坑**。
-
-每个新模板的 system prompt 开头必须有"参数命名契约"块，见 `templates/daily_brief.yaml` 顶部样板。要点：
-1. 参数名用 kebab-case 不转 camelCase
-2. 参数描述里的 camelCase 是语义名，不是 key
-3. 数组/JSON 参数按各自约定传（见 ADR-001）
+dws 参数名是 kebab-case，LLM 倾向 camelCase，不加约束会误传。每个新模板的 system prompt 开头必须有"参数命名契约"块，见 `templates/daily_brief.yaml` 顶部样板。
 
 这是**唯一非业务**的共享 prompt——其他业务契约（如 ADR-003 的 report.create field_name 匹配）按模板场景自行嵌入。
