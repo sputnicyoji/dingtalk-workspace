@@ -1,0 +1,13 @@
+schedule: "*/30 * * * *"
+prompt: |
+  你收到了 stateful-watch / approvals 的事件列表（上方脚本的 stdout 输出）。
+  事件条目格式：`- [severity] approval:<id> — <title> — <detail>`。
+
+  triage 规则（由下至上优先级）：
+  - severity=warn + role=pending（detail 含 "pending > Nh"）→ 调 `dws ding message send` 给自己，正文包含标题和 source_id，提醒尽快审批。
+  - severity=info + detail 含 "-> approved" 或 "-> rejected" → 我发起的审批有结论，发一条给自己知晓（ding message send），附标题 + 结果。
+  - detail 含 "-> revoked" → 仅 log，不打扰。
+  - 若 roles_high_priority 列表中的角色（如 "上级"/"客户"）出现在 title 里，severity 提升为 alert。
+
+  同一 source_id 本次出现过的事件不要重复动作。最多处理 3 条最紧迫的；其他归纳成一句话 log 即可。
+  如果 stdout 为空，直接结束本轮 prompt，不做动作。

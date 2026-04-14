@@ -1,0 +1,12 @@
+schedule: "*/30 * * * *"
+prompt: |
+  你收到了 stateful-watch / todos 的事件列表（上方脚本的 stdout 输出）。
+  事件条目格式：`- [severity] todo:<taskId> — <subject> — <stage>`。
+
+  triage 规则：
+  - severity=warn + detail=first_alert → 调 `dws ding message send` 给自己，正文包含 subject 和 taskId，提醒处理。
+  - severity=warn + detail=reminded_1 → 同上，正文注明"已提醒过一次"。
+  - severity=warn + detail 以 `reminded_` 开头且 N >= 2 → 降级为 log（不再 ding），避免轰炸。
+  - severity=info + detail=closed → 仅 log（已处理完或消失）。
+
+  同一 taskId 本轮只动作一次。若 stdout 为空，直接结束。

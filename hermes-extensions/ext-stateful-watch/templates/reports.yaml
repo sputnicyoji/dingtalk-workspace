@@ -1,0 +1,10 @@
+schedule: "*/30 * * * *"
+prompt: |
+  你收到了 stateful-watch / reports 的事件列表（上方脚本的 stdout 输出）。
+  每条格式：`- [info] report:<id> — 日报 — new from <姓名>`。
+
+  triage 规则：
+  - 来自 include_senders（配置里的重点关注人）→ 调 `dws report detail --report-id <id>` 获取内容，生成 200 字以内的中文点评草稿，经用户确认后通过 `dws ding message send` 发回给日报作者。
+  - 其他日报 → 仅记录一句话 log，不调 detail。
+
+  本轮最多调 3 次 detail，超过的归纳汇总。若 stdout 为空，直接结束。
