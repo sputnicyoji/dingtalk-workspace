@@ -14,6 +14,35 @@
 
 ---
 
+## Post-Task-1 adjustments (authoritative overrides)
+
+Task 1 probe revealed 3 dws constraints that reshape watchers 6 and 8. These overrides take precedence over the sketches below:
+
+1. **approvals** — `list-initiated` requires `--process-code` (per-form), and `list-forms` errors out. Workaround: `config.approvals.initiated_process_codes: [list of codes]` — user manually enumerates forms they care about; watcher iterates them. `list-pending` works without process-code, no change.
+2. **todos** — real data has `dueTime: null` across the board. Deadline-based stage machine is replaced with **stale-age stage machine** keyed off `createdTime`:
+   - `stale_days` config (default 7): first alert when `now - createdTime >= stale_days * 86400`
+   - `reminder_interval_days` config (default 3): periodic reminder every N days thereafter
+   - Stages become: `first_alert` → `reminded_N` (counter) → `closed` when `finalStatusStage != 2` or item disappears from list
+   - Note: `finalStatusStage=2` = active/pending in observed data. `--status false` returned empty and `true` returned same full list, confirming 2 means "not yet marked truly done in dws terms." Watch items with `finalStatusStage == 2` only.
+3. **reports** — watcher stays delta-only. Item shape confirmed: `{report_id, create_time (epoch ms), creator_user_id, creator_user_name, modified_time}`. **No title/template/content** in list response; triage agent calls `dws report detail --report-id <id>` if it decides a deeper read is warranted. Watcher itself stays lightweight.
+4. **approvals pending item shape is UNKNOWN** — current user had zero pending approvals at probe time. Tests use a fabricated shape `{processInstanceId, title, originatorUserName, createTime, status}` based on DingTalk API docs conventions. First live run must verify real item shape and patch tests if wrong.
+
+Updated config file:
+```yaml
+approvals:
+  timeout_hours: 4
+  roles_high_priority: ["上级", "客户"]
+  initiated_process_codes: []        # user fills manually; empty = skip initiated half
+reports:
+  include_senders: []
+  exclude_templates: []
+todos:
+  stale_days: 7
+  reminder_interval_days: 3
+```
+
+---
+
 ## File layout
 
 ```
