@@ -76,25 +76,27 @@ T1 npm 版本独立步进（v0.0.4 当前），不被 milestone 绑死——mile
 
 ---
 
-## v0.2 — ext-stateful-watch ⏳ 未启动
+## v0.2 — ext-stateful-watch 🟡 MVP 代码完成，待观察
 
-**目标**：补齐 Hermes cron 唯一缺失的能力——跨周期状态去重，让"@ 我超 2h 未回告警"这类规则不重复刷屏。
+**目标**：补齐 Hermes cron 唯一缺失的能力——跨周期状态去重。
 
-**范围**：
-- `hermes-extensions/ext-stateful-watch/`
-- 实施形态：Hermes cron `script` 参数（pre-run Python 注入 prompt）。详见 ARCHITECTURE §4.2
-- 状态文件：`~/.hermes/dingtalk-extensions/state/<category>.jsonl`
-- 配套 cron prompt 模板：`unreplied_mentions.yaml`
+**范围调整**（Task 1 probe 后）：`@mention watcher` 砍掉（dws CLI 无 `chat message list` 原语），改为 3 个 watcher：
+- `watch_approvals` — `dws oa approval list-pending` 超时 + `list-initiated` 状态机
+- `watch_reports` — `dws report list` 新到达 delta
+- `watch_todos` — `dws todo task list` 停滞超 N 天阶段机（基于 createdTime，dueTime 在观测数据中全为 null）
 
-**前置工作**：
-- [ ] ADR-005：状态文件 schema + 版本演进 + 50MB 阈值的 SQLite 迁移触发
-- [ ] 验证 Hermes `script` 参数当前形态（读 `D:\Hermes_Agent\hermes_cli\cron\jobs.py`）
+**已完成**：
+- [x] 单 ext 打包 `hermes-extensions/ext-stateful-watch/`（lib + scripts + templates + install.sh）
+- [x] 64 个测试全绿（unit + e2e with injected fake runner），<0.2s
+- [x] Live spot-check：watch_todos 触发 8 条 first_alert，第二次 silent；watch_reports 触发 8 条日报 delta，第二次 silent；watch_approvals 当前 pending 为空 → silent + 空 snapshot 正常
+- [x] ADR-005 状态 schema（JSONL per watcher，不用 SQLite）
+- [x] install.sh 支持 `HERMES_HOME` override，dry-install 通过
+- [x] Cron prompt 模板 3 份（triage 规则内嵌）
 
-**退出标准**：
-- [ ] 连续 1 周："@ 我未回" 告警不重复推送
-- [ ] dedup 单元测试 ≥ 80%
-- [ ] 状态文件 schema 有版本号 + 向后兼容方案明确
-- [ ] 降级方案验证（Hermes `script` 参数被弃用时切换为独立 MCP server）
+**退出标准**（尚待）：
+- [ ] 启用 `watch_todos` 作首个 cron（最低风险），观察 7 天：state 增长合理、stage 转换正确、无误报
+- [ ] 真实 pending 审批到达时 patch `watch_approvals` normalization（当前用 fabricated item shape；fixtures/approval_list_pending.json 为空）
+- [ ] `config.approvals.initiated_process_codes` 按实际使用的审批表填充
 
 **不做**：UI、多租户、外发渠道（非钉钉）。
 

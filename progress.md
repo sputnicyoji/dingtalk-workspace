@@ -53,11 +53,22 @@
   - 内嵌 ADR-003（report.create 契约）+ ADR-004（隐式 required 清单）
   - **未做**：`install.sh`（待 Hermes cronjob CLI 入口形态稳定，详见 ARCHITECTURE §4.4）
 
+### 进行中（cont.）
+
+- [x] **`ext-stateful-watch`** v0.2-draft — MVP 代码完成（2026-04-14）
+  - 形态：Hermes cron `script` 参数（pre-run Python，stdout 注入 prompt）
+  - 准入：✓ 满足"离开 Hermes 独家能力做不出"
+  - **范围重塑**（Task 1 probe 后）：@mention watcher 砍掉（dws 无 `chat message list`），改为 3 个 watcher：approvals / reports / todos
+  - 基座：`lib/{event,state,dws_client,config,runtime}.py` + `lib/watchers/{approvals,reports,todos}.py`
+  - 脚本：`scripts/watch_{approvals,reports,todos}.py`
+  - 测试：**64 pass**（unit + e2e），<0.2s
+  - Live verified：watch_todos 触发 8 条 first_alert + watch_reports 触发 8 条 delta；第二次运行均 silent
+  - ADR-005：JSONL per-watcher，不用 SQLite
+  - install.sh dry-install 通过
+  - 待实战观察：启用 watch_todos cron 7 天
+
 ### 待启动
 
-- [ ] **`ext-stateful-watch`** v0.2：跨周期状态告警（Hermes cron 单次执行做不到）
-  - 形态决策：Hermes cron `script` 参数（pre-run Python，stdout 注入 prompt）
-  - 准入：✓ 满足"离开 Hermes 独家能力做不出"
 - [ ] **`ext-long-content`** v0.3：delegate 处理长会议/文档
   - 准入：✓ 依赖 Hermes delegate_tool / trajectory_compressor
 
