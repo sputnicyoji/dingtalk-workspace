@@ -9,28 +9,47 @@ import { ProbeFatalError } from './errors.js';
 
 // 从 package.json 读版本号，避免发版漂移（dist/cli.js → ../package.json = 包根）
 const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 
 interface CliArgs {
   verbose: boolean;
   toolTimeoutMs: number;
 }
 
+function parsePositiveInteger(raw: string): number | null {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
+function getDefaultTimeoutMs(): number {
+  const raw = process.env['DINGTALK_MCP_TIMEOUT'];
+  if (!raw) return DEFAULT_TOOL_TIMEOUT_MS;
+  const parsed = parsePositiveInteger(raw);
+  return parsed ?? DEFAULT_TOOL_TIMEOUT_MS;
+}
+
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     verbose: false,
-    toolTimeoutMs: parseInt(process.env['DINGTALK_MCP_TIMEOUT'] ?? '120000', 10),
+    toolTimeoutMs: getDefaultTimeoutMs(),
   };
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--verbose' || a === '-v') {
       args.verbose = true;
-    } else if (a === '--timeout' && i + 1 < argv.length) {
+    } else if (a === '--timeout') {
       const next = argv[i + 1];
-      if (next) {
-        args.toolTimeoutMs = parseInt(next, 10) * 1000;
-        i++;
+      if (!next) {
+        throw new Error('--timeout requires a positive integer value (seconds)');
       }
+      const seconds = parsePositiveInteger(next);
+      if (seconds == null) {
+        throw new Error('--timeout must be a positive integer (seconds)');
+      }
+      args.toolTimeoutMs = seconds * 1000;
+      i++;
     } else if (a === '--help' || a === '-h') {
       printHelp();
       process.exit(0);

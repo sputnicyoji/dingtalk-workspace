@@ -77,7 +77,11 @@ export async function runDws(
   try {
     result = await run(ctx.binaryPath, args, timeout);
   } catch (e) {
-    return err(makeError('TIMEOUT', `dws ${args.join(' ')}: ${(e as Error).message}`));
+    const error = e as NodeJS.ErrnoException;
+    const message = error?.message ?? String(e);
+    const isTimeout = message.startsWith('spawn timeout:') || error?.code === 'ETIMEDOUT';
+    const code = isTimeout ? 'TIMEOUT' : 'NOT_INSTALLED';
+    return err(makeError(code, `dws ${args.join(' ')}: ${message}`));
   }
   if (result.exitCode !== 0) {
     return err(

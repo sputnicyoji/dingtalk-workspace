@@ -4,6 +4,7 @@ import {
   parseVersionOutput,
   parseAuthStatus,
   probeDws,
+  runDws,
   locateDws,
   type SpawnOnceFn,
   type SpawnOnceResult,
@@ -87,11 +88,23 @@ describe('probeDws (spawn injected)', () => {
       return { stdout: r.stdout ?? '', stderr: r.stderr ?? '', exitCode: r.exitCode ?? 0 };
     });
 
-  it('returns NOT_INSTALLED when binary not provided and not on PATH', async () => {
-    const r = await probeDws({ binaryPath: undefined, spawnImpl: fakeSpawn(() => ({})) });
-    // 当前测试机器装了 dws, 这条断言可能因实际 PATH 而通过. 避免环境耦合, 直接传 undefined PATH 不可行.
-    // 改测: 注入"找不到 binary"的代码路径靠 binaryPath 显式传入 + spawn 抛异常
-    expect(r).toBeDefined();
+  it('returns NOT_INSTALLED when binary not provided and PATH is empty', async () => {
+    const oldPath = process.env['PATH'];
+    const oldPathWin = process.env['Path'];
+    process.env['PATH'] = '';
+    process.env['Path'] = '';
+    try {
+      const spawnImpl = fakeSpawn(() => ({}));
+      const r = await probeDws({ binaryPath: undefined, spawnImpl });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error.code).toBe('NOT_INSTALLED');
+      expect(spawnImpl).not.toHaveBeenCalled();
+    } finally {
+      if (oldPath === undefined) delete process.env['PATH'];
+      else process.env['PATH'] = oldPath;
+      if (oldPathWin === undefined) delete process.env['Path'];
+      else process.env['Path'] = oldPathWin;
+    }
   });
 
   it('returns NOT_INSTALLED when version spawn throws', async () => {
@@ -157,5 +170,27 @@ describe('probeDws (spawn injected)', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.authenticated).toBe(false);
     expect(calls).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('runDws error classification', () => {
+  it('returns TIMEOUT when spawn reports timeout', async () => {
+    const spawnImpl: SpawnOnceFn = vi.fn(async () => {
+      throw new Error('spawn timeout: /fake/dws foo');
+    });
+    const r = await runDws(['foo'], { binaryPath: '/fake/dws', spawnImpl });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('TIMEOUT');
+  });
+
+  it('returns NOT_INSTALLED for non-timeout spawn errors', async () => {
+    const spawnImpl: SpawnOnceFn = vi.fn(async () => {
+      const e = new Error('spawn ENOENT') as NodeJS.ErrnoException;
+      e.code = 'ENOENT';
+      throw e;
+    });
+    const r = await runDws(['foo'], { binaryPath: '/fake/dws', spawnImpl });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('NOT_INSTALLED');
   });
 });

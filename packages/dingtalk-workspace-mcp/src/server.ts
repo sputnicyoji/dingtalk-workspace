@@ -9,6 +9,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createRequire } from 'node:module';
 import { z } from 'zod';
 import type { ZodRawShape, ZodType } from 'zod';
 import { probeDws } from './dws-probe.js';
@@ -18,7 +19,8 @@ import { formatError, ProbeFatalError } from './errors.js';
 import type { DwsFlagSpec, DwsProbeResult, DwsToolSpec } from './types.js';
 
 const SERVER_NAME = '@sputnicyoji/dingtalk-workspace-mcp';
-const SERVER_VERSION = '0.0.1';
+const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
+const SERVER_VERSION = pkg.version;
 
 export interface ServerOptions {
   /** dws 单次调用超时（默认 120s） */
