@@ -1,6 +1,6 @@
 {
   "name": "@sputnicyoji/dingtalk-workspace-mcp",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "dws-driven, dynamic, full-coverage DingTalk MCP server. Host-agnostic. Auto-syncs with dws upgrades, zero maintenance.",
   "type": "module",
   "bin": {

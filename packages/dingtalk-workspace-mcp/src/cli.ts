@@ -3,8 +3,12 @@
  * CLI 入口。解析 argv，启动 MCP server。
  */
 
+import { createRequire } from 'node:module';
 import { startServer } from './server.js';
 import { ProbeFatalError } from './errors.js';
+
+// 从 package.json 读版本号，避免发版漂移（dist/cli.js → ../package.json = 包根）
+const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
 
 interface CliArgs {
   verbose: boolean;
@@ -31,7 +35,7 @@ function parseArgs(argv: string[]): CliArgs {
       printHelp();
       process.exit(0);
     } else if (a === '--version') {
-      process.stdout.write('0.0.1\n');
+      process.stdout.write(`${pkg.version}\n`);
       process.exit(0);
     }
   }
