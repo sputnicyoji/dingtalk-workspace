@@ -1,7 +1,7 @@
 # Upstream Issue Draft — dws: 多个 flag 在 API 必填但 help 未标 (必填)
 
 **Target**: https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/issues
-**Status**: 待上报（2026-04-14 拟稿，可与 #106 合并或独立）
+**Status**: **Filed 2026-04-14 — https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/issues/107**（与 #106 同类，独立处理）
 **关联**：`docs/decisions/004-implicit-required-flags.md`
 
 ---
