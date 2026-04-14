@@ -1,0 +1,25 @@
+# ext-cron-templates
+
+**T2 零代码模块**：把经过实测的 Hermes cron prompt 沉淀下来。不是代码包，是 **prompt + 元数据**。
+
+## 现有模板
+
+| 文件 | 用途 | 状态 |
+|------|------|------|
+| `templates/daily_brief.yaml` | 日报自动草拟 + 钉钉发送（内嵌 `dingtalk.report.create` 契约，见 ADR-003） | v0.1-draft |
+
+## 怎么用
+
+**暂未提供 `install.sh`** — 等 `cron/jobs.py` CLI 入口形态稳定（见 `docs/ARCHITECTURE.md` §4.4 未决分支）再决定是拷贝到 `~/.hermes/cron/templates/` 还是生成一组 `hermes cronjob create` 命令。
+
+**临时手动路径**：`hermes cronjob create --schedule "..." --prompt "$(cat templates/daily_brief.yaml)"`
+
+## 为什么这是 ext 而不是 docs
+
+- 有版本号，随 dws / 钉钉 API 变化迭代
+- 是项目官方分发物（`npx ... install-cron-templates` 会拉取）
+- 契约（如 ADR-003）在 prompt 里硬编码——这比仓库里的 markdown 更接近 runtime
+
+## 准入原则
+
+新增模板前自问：离开 **Hermes 独家能力** 做不出？（cron + deliver=dingtalk + memory）如果 `dws CLI + 一个 prompt + agent` 能直接搞定，就不加——让用户自己组合。

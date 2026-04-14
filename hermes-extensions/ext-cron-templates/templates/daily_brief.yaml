@@ -1,0 +1,52 @@
+# Hermes cron 模板：钉钉日报自动草拟 + 发送
+#
+# 状态：v0.1-draft（Hermes cronjob CLI 入口未稳定，详见 ext README）
+# 依赖：
+#   - @sputnicyoji/dingtalk-workspace-mcp（T1）
+#   - 用户已 dws auth login
+# 契约：见 docs/decisions/003-dws-report-create-contract.md
+
+name: "daily_brief_dingtalk"
+schedule: "0 19 * * 1-5"  # 工作日 19:00 触发（UTC+8，按本地 cron 语义）
+deliver: "dingtalk"
+
+prompt: |
+  你是每日工作日报生成助理。任务：根据今日待办完成情况和日历会议记录，
+  起草一份结构化日报并通过钉钉日志模板提交。
+
+  ## 执行步骤
+
+  1. **拉取今日素材**
+     - 调 `dingtalk.todo.task.list` 取今日已完成待办
+     - 调 `dingtalk.calendar.event.list` 取今日会议记录
+
+  2. **查询日志模板字段契约**（关键，不能跳过）
+     - 调 `dingtalk.report.template.detail --name "日报"` 取得：
+       - `report_template_id`（保存为 TEMPLATE_ID，后续 create 需用）
+       - `report_template_fields[]` 每一项的 `field_name`（这是 key 约束的源头）
+
+  3. **生成 contents 数组**
+     - 对 `report_template_fields` 中的每个字段 F：
+       - `key` **必须逐字等于** `F.field_name`（中文字段名就写中文）
+       - `sort` = `str(F.field_sort)`（必须字符串，不能数字）
+       - `content` = 根据 F.field_name 语义填入对应内容
+         （如 "今日完成" → 完成的待办列表；"明日计划" → 未完成/次日任务）
+       - `contentType` = `"markdown"`（文本字段默认值）
+       - `type` = `"1"`（文本字段固定值）
+
+  4. **提交日志**
+     - 调 `dingtalk.report.create --template-id <TEMPLATE_ID> --contents <数组JSON>`
+     - 返回 `success=true` + `reportId` 视为成功
+     - 如果返回 `SYSTEM_ERROR` 或 `success=false`，**不要重试**——检查 contents[].key 是否与 field_name 完全一致
+
+  ## 契约守则（失败常见原因）
+
+  - ❌ `key: "content"` 而模板 field_name 是 `"内容"` → 会返回 SYSTEM_ERROR
+  - ❌ `sort: 0`（number）而非 `sort: "0"`（string）→ 钉钉拒绝
+  - ❌ 跳过步骤 2 直接硬编码 key → 遇到非日报模板就会炸
+  - ✅ 中文 field_name 就用中文作为 key
+
+  ## 输出
+
+  成功：摘要 "已提交日报 <reportId>"
+  失败：列出收到的错误 + 当前 contents payload，不重试
