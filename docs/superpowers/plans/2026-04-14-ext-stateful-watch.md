@@ -1,1364 +1,711 @@
-# ext-stateful-watch Implementation Plan
+# ext-stateful-watch Implementation Plan (v0.2)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Status**: Draft — supersedes the 2026-04-14 @mention-based plan (discarded after probe found `dws chat` has no message-list primitive).
 
-**Goal:** Build `hermes-extensions/ext-stateful-watch` v0.2 — a Hermes cron `script` that filters DingTalk `@ 我` mentions against a JSONL state file and injects only new events into the agent prompt.
+**Scope**: one ext (`hermes-extensions/ext-stateful-watch/`) bundling a shared state/dedup base and three cron-driven watchers over dws CLI data sources that Hermes cron alone cannot keep state for:
 
-**Architecture:** Python script lives in `~/.hermes/scripts/stateful_watch/`, runs via Hermes cron's `subprocess.run([sys.executable, path])` pre-agent. Calls `dws` CLI via subprocess (no MCP, no Hermes API). Reads/writes JSONL state under `~/.hermes/dingtalk-extensions/state/`. stdlib only — no Hermes venv pollution.
+| Watcher | dws data source | Semantic |
+|---|---|---|
+| approvals | `oa approval list-initiated` + `list-pending` | state transitions + timeout |
+| reports  | `report list`                                 | new-arrival delta |
+| todos    | `todo list`                                   | deadline stage machine |
 
-**Tech Stack:** Python ≥3.11 (stdlib only at runtime), pytest for tests, TOML config, dws CLI (v1.0.8+) as DingTalk entry point.
+**Non-goals**: @mention detection (infeasible via dws), auto cron creation, SQLite, memory_tool integration.
 
 ---
 
-## File Structure
+## File layout
 
 ```
 hermes-extensions/ext-stateful-watch/
-├── lib/
-│   ├── __init__.py            # empty
-│   ├── event.py               # Event dataclass + from_dws_json
-│   ├── state.py               # JSONL I/O, mark_resolved
-│   ├── dws_client.py          # subprocess wrapper for dws
-│   └── dedup.py               # filter_new_events, detect_resolved
-├── scripts/
-│   └── unreplied_mentions.py  # main entry (installed to ~/.hermes/scripts/stateful_watch/)
-├── templates/
-│   └── unreplied_mentions.yaml  # cron prompt template
-├── tests/
-│   ├── __init__.py            # empty
-│   ├── test_event.py
-│   ├── test_state.py
-│   ├── test_dws_client.py
-│   ├── test_dedup.py
-│   └── test_script_e2e.py
-├── config.example.toml
-├── install.sh
 ├── pyproject.toml
 ├── README.md
-└── DESIGN.md                  # brainstorming output (4 sections)
+├── DESIGN.md
+├── install.sh
+├── lib/
+│   ├── __init__.py
+│   ├── event.py
+│   ├── state.py
+│   ├── dws_client.py
+│   ├── config.py
+│   └── watchers/
+│       ├── __init__.py
+│       ├── approvals.py
+│       ├── reports.py
+│       └── todos.py
+├── scripts/
+│   ├── watch_approvals.py
+│   ├── watch_reports.py
+│   └── watch_todos.py
+├── templates/
+│   ├── approvals.yaml
+│   ├── reports.yaml
+│   └── todos.yaml
+├── fixtures/              # captured dws responses from Task 1 probe
+│   ├── approval_list_initiated.json
+│   ├── approval_list_pending.json
+│   ├── report_list.json
+│   └── todo_list.json
+└── tests/
+    ├── __init__.py
+    ├── test_event.py
+    ├── test_state.py
+    ├── test_dws_client.py
+    ├── test_approvals.py
+    ├── test_reports.py
+    ├── test_todos.py
+    └── test_e2e.py
 ```
 
-**Responsibility separation:**
-- `event.py`: pure dataclass + conversion, no I/O
-- `state.py`: JSONL persistence, atomic writes, no business logic
-- `dws_client.py`: subprocess only, no state, no filtering
-- `dedup.py`: pure algorithm over Event + state rows
-- `scripts/unreplied_mentions.py`: wiring + config, no algorithms
+Repo-level additions:
+- `docs/decisions/005-stateful-watch-state-schema.md`
 
 ---
 
-## Task 1: Project scaffolding
+## Task 1 — Probe dws shapes (upfront, blocks everything)
 
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/pyproject.toml`
-- Create: `hermes-extensions/ext-stateful-watch/lib/__init__.py` (empty)
-- Create: `hermes-extensions/ext-stateful-watch/tests/__init__.py` (empty)
-- Create: `hermes-extensions/ext-stateful-watch/README.md`
-- Create: `hermes-extensions/ext-stateful-watch/DESIGN.md`
+**Goal**: capture real JSON responses from the 4 dws commands we depend on. Saves us from a second "wrong shape" surprise.
 
-- [ ] **Step 1: Create pyproject.toml**
+- [ ] **Step 1**: create `fixtures/` dir.
+- [ ] **Step 2**: probe each endpoint, save stdout verbatim.
+  ```bash
+  cd hermes-extensions/ext-stateful-watch
+  mkdir -p fixtures
+  dws oa approval list-initiated --format json > fixtures/approval_list_initiated.json 2>fixtures/approval_list_initiated.err
+  dws oa approval list-pending   --format json > fixtures/approval_list_pending.json   2>fixtures/approval_list_pending.err
+  dws report list                 --format json > fixtures/report_list.json             2>fixtures/report_list.err
+  dws todo task list              --format json > fixtures/todo_list.json               2>fixtures/todo_list.err
+  ```
+- [ ] **Step 3**: for each fixture, document actual top-level keys and item shape in DESIGN.md under "§Data shapes". Pay attention to:
+  - approval: `status` enum values (pending/approved/rejected/revoked?), creator/approver fields
+  - report: unique id field (`report_id` vs `biz_id`), sender field, template name
+  - todo: `due_time` type (epoch ms vs ISO8601), `done_time`, `status` enum
+- [ ] **Step 4**: if any probe fails due to implicit required flag (see ADR-004), note it and supply minimal dummy value (`--process-code dummy` etc.); if it fails for real (auth / scope), STOP and raise.
+- [ ] **Step 5**: commit fixtures (scrub real user names/phone numbers first — replace with `U_REDACTED_1`, `P_REDACTED_1`).
+  ```bash
+  git add hermes-extensions/ext-stateful-watch/fixtures/ docs/superpowers/plans/2026-04-14-ext-stateful-watch.md
+  git commit -m "feat(ext-stateful-watch): probe dws fixtures for 3 watchers"
+  ```
 
-```toml
-[project]
-name = "ext-stateful-watch"
-version = "0.2.0-draft"
-description = "Hermes cron script: cross-run dedup for DingTalk @mentions"
-requires-python = ">=3.11"
-dependencies = []  # stdlib only at runtime
-
-[project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-```
-
-- [ ] **Step 2: Create empty __init__.py files**
-
-```bash
-# lib/__init__.py and tests/__init__.py are both empty files
-```
-
-Shell:
-```bash
-touch hermes-extensions/ext-stateful-watch/lib/__init__.py
-touch hermes-extensions/ext-stateful-watch/tests/__init__.py
-```
-
-- [ ] **Step 3: Write README.md**
-
-```markdown
-# ext-stateful-watch
-
-**T2 Hermes extension (v0.2-draft)** — solves Hermes cron's missing piece: cross-run state for deduplication.
-
-## What it does
-
-Every 30 min, scans DingTalk `@` mentions in watched conversations. New events (not seen in prior runs) get injected into the cron agent's prompt. Already-alerted events are suppressed.
-
-## Install
-
-```bash
-bash install.sh  # copies scripts to $HERMES_HOME/scripts/stateful_watch/
-```
-
-Then create the cron job manually:
-```bash
-hermes cronjob create \
-  --schedule "*/30 * * * *" \
-  --script scripts/stateful_watch/unreplied_mentions.py \
-  --prompt "$(cat ~/.hermes/dingtalk-extensions/templates/unreplied_mentions.yaml)"
-```
-
-## Files
-
-- `scripts/unreplied_mentions.py` — entry point, installed to `$HERMES_HOME/scripts/`
-- `lib/` — pure modules (state, dws_client, dedup, event)
-- `tests/` — pytest unit + e2e tests
-- `DESIGN.md` — architecture, state schema, dedup semantics
-- `docs/decisions/005-stateful-watch-state-schema.md` (repo-level ADR)
-```
-
-- [ ] **Step 4: Write DESIGN.md**
-
-Copy the 4-section brainstorming output covering: Architecture & data flow, State schema + dedup semantics, MVP scope + evolution, Testing/install.
-
-- [ ] **Step 5: Commit scaffolding**
-
-```bash
-git add hermes-extensions/ext-stateful-watch/
-git commit -m "feat(ext-stateful-watch): v0.2 scaffolding + DESIGN.md"
-```
+**Do not skip.** Every subsequent watcher test depends on these fixtures being accurate.
 
 ---
 
-## Task 2: Event dataclass
+## Task 2 — Scaffolding + DESIGN.md
 
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/lib/event.py`
-- Test: `hermes-extensions/ext-stateful-watch/tests/test_event.py`
+**Files**: `pyproject.toml`, `lib/__init__.py`, `lib/watchers/__init__.py`, `tests/__init__.py`, `README.md`, `DESIGN.md`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1**: `pyproject.toml`
+  ```toml
+  [project]
+  name = "ext-stateful-watch"
+  version = "0.2.0-draft"
+  description = "Hermes cron extension: cross-run state for DingTalk approvals/reports/todos"
+  requires-python = ">=3.11"
+  dependencies = []  # stdlib + PyYAML only
 
-`tests/test_event.py`:
-```python
-from __future__ import annotations
+  [project.optional-dependencies]
+  dev = ["pytest>=8.0", "pytest-cov>=5.0", "PyYAML>=6.0"]
 
-import hashlib
+  [tool.pytest.ini_options]
+  testpaths = ["tests"]
+  pythonpath = ["."]
+  ```
+  (PyYAML is dev-only; runtime script imports lazily and degrades to stdlib if absent — see Task 8.)
 
-from lib.event import Event
-
-
-def test_event_id_is_stable_hash_of_msg_id():
-    e = Event.from_dws_message(
-        msg_id="msg_7d4a3b2f",
-        conversation_id="cidXXX",
-        conversation_title="K1应援组",
-        sender_id="u_123",
-        sender_name="王总",
-        text="项目进度?",
-        sent_at_ms=1776160000000,
-    )
-    expected = hashlib.sha256(b"msg_7d4a3b2f").hexdigest()[:16]
-    assert e.event_id == expected
-
-
-def test_event_roundtrips_through_row():
-    e = Event.from_dws_message(
-        msg_id="m1",
-        conversation_id="c1",
-        conversation_title="t",
-        sender_id="s",
-        sender_name="S",
-        text="hi",
-        sent_at_ms=1_000_000,
-    )
-    row = e.to_row(first_seen_ms=2_000_000)
-    assert row["event_id"] == e.event_id
-    assert row["source"]["sender_name"] == "S"
-    assert row["first_seen"] == 2_000_000
-    assert row["resolved_at"] is None
-    assert row["schema_version"] == 1
-```
-
-- [ ] **Step 2: Run test, verify failure**
-
-```bash
-cd hermes-extensions/ext-stateful-watch
-python -m pytest tests/test_event.py -v
-```
-Expected: `ModuleNotFoundError: No module named 'lib.event'`
-
-- [ ] **Step 3: Implement lib/event.py**
-
-```python
-"""Event: one observed DingTalk item (e.g. a mention in a group).
-
-Pure dataclass + deterministic id derivation. No I/O, no dws coupling
-beyond the `from_dws_message` constructor signature.
-"""
-
-from __future__ import annotations
-
-import hashlib
-from dataclasses import dataclass
-from typing import Any
-
-
-@dataclass(frozen=True, slots=True)
-class Event:
-    event_id: str
-    conversation_id: str
-    conversation_title: str
-    sender_id: str
-    sender_name: str
-    text: str
-    sent_at_ms: int
-
-    @staticmethod
-    def from_dws_message(
-        *,
-        msg_id: str,
-        conversation_id: str,
-        conversation_title: str,
-        sender_id: str,
-        sender_name: str,
-        text: str,
-        sent_at_ms: int,
-    ) -> Event:
-        # sha256 + truncate 16 = 64-bit hex, collision-safe for our scale.
-        event_id = hashlib.sha256(msg_id.encode("utf-8")).hexdigest()[:16]
-        return Event(
-            event_id=event_id,
-            conversation_id=conversation_id,
-            conversation_title=conversation_title,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            text=text,
-            sent_at_ms=sent_at_ms,
-        )
-
-    def to_row(self, *, first_seen_ms: int) -> dict[str, Any]:
-        return {
-            "schema_version": 1,
-            "event_id": self.event_id,
-            "category": "unreplied_mentions",
-            "source": {
-                "conversation_id": self.conversation_id,
-                "conversation_title": self.conversation_title,
-                "sender_id": self.sender_id,
-                "sender_name": self.sender_name,
-                "text_preview": self.text[:80],
-                "sent_at": self.sent_at_ms,
-            },
-            "first_seen": first_seen_ms,
-            "alerted_at": first_seen_ms,
-            "resolved_at": None,
-        }
-```
-
-- [ ] **Step 4: Run test, verify pass**
-
-```bash
-python -m pytest tests/test_event.py -v
-```
-Expected: 2 passed
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/event.py tests/test_event.py
-git commit -m "feat(ext-stateful-watch): Event dataclass + deterministic event_id"
-```
+- [ ] **Step 2**: empty `__init__.py` files.
+- [ ] **Step 3**: `README.md` — 1-page overview: what it does, install, 3 cron commands.
+- [ ] **Step 4**: `DESIGN.md` — full design doc combining §1–§5 from the brainstorming session + §Data shapes section from Task 1. Sections:
+  1. Architecture & packaging
+  2. State schema per watcher
+  3. Delivery via stdout + agent triage
+  4. Testing strategy
+  5. Roll-out / exit criteria
+  6. Data shapes (populated by Task 1)
+- [ ] **Step 5**: commit.
+  ```bash
+  git commit -m "feat(ext-stateful-watch): scaffolding + DESIGN.md"
+  ```
 
 ---
 
-## Task 3: State module — JSONL I/O
+## Task 3 — `lib/event.py` (TDD)
 
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/lib/state.py`
-- Test: `hermes-extensions/ext-stateful-watch/tests/test_state.py`
+**Purpose**: unified event record that any watcher emits. Watchers never write directly to stdout; they produce `Event` objects and a render layer serializes.
 
-- [ ] **Step 1: Write failing tests**
+- [ ] **Step 1**: `tests/test_event.py` first.
+  ```python
+  from lib.event import Event, make_event_id
 
-`tests/test_state.py`:
+  def test_event_id_deterministic():
+      assert make_event_id("approval", "xyz", "approved") == make_event_id("approval", "xyz", "approved")
+
+  def test_event_id_differs_by_kind():
+      assert make_event_id("approval", "xyz", "approved") != make_event_id("todo", "xyz", "approved")
+
+  def test_event_to_markdown_minimal():
+      e = Event(kind="approval", source_id="xyz", severity="info", title="加班申请", detail="approved", extra={})
+      line = e.to_markdown_row()
+      assert "approval" in line and "xyz" in line and "approved" in line
+  ```
+- [ ] **Step 2**: watch it fail.
+- [ ] **Step 3**: implement `lib/event.py`.
+  ```python
+  from __future__ import annotations
+  from dataclasses import dataclass, field
+  from hashlib import sha256
+
+  def make_event_id(kind: str, source_id: str, facet: str) -> str:
+      return sha256(f"{kind}|{source_id}|{facet}".encode()).hexdigest()[:16]
+
+  @dataclass(frozen=True)
+  class Event:
+      kind: str                 # "approval" | "report" | "todo"
+      source_id: str            # approval_id / report_id / todo_id
+      severity: str             # "info" | "warn" | "alert"
+      title: str
+      detail: str
+      extra: dict = field(default_factory=dict)
+
+      @property
+      def event_id(self) -> str:
+          return make_event_id(self.kind, self.source_id, self.detail)
+
+      def to_markdown_row(self) -> str:
+          return f"- [{self.severity}] {self.kind}:{self.source_id} — {self.title} — {self.detail}"
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit `feat(ext-stateful-watch): Event dataclass`.
+
+---
+
+## Task 4 — `lib/state.py` (TDD)
+
+**Purpose**: JSONL append + load + atomic file replacement. Watcher-agnostic primitives.
+
+- [ ] **Step 1**: `tests/test_state.py`.
+  ```python
+  import json
+  from pathlib import Path
+  from lib.state import append_row, load_rows, atomic_replace_all
+
+  def test_append_then_load(tmp_path):
+      f = tmp_path / "s.jsonl"
+      append_row(f, {"a": 1})
+      append_row(f, {"a": 2})
+      rows = list(load_rows(f))
+      assert rows == [{"a": 1}, {"a": 2}]
+
+  def test_load_tolerates_corrupt_line(tmp_path, capsys):
+      f = tmp_path / "s.jsonl"
+      append_row(f, {"ok": True})
+      f.open("a").write("{not json\n")
+      append_row(f, {"ok": True, "n": 2})
+      rows = list(load_rows(f))
+      assert rows == [{"ok": True}, {"ok": True, "n": 2}]
+      assert "corrupt" in capsys.readouterr().err.lower()
+
+  def test_atomic_replace(tmp_path):
+      f = tmp_path / "s.jsonl"
+      append_row(f, {"old": True})
+      atomic_replace_all(f, [{"new": 1}, {"new": 2}])
+      rows = list(load_rows(f))
+      assert rows == [{"new": 1}, {"new": 2}]
+
+  def test_load_missing_file_empty(tmp_path):
+      assert list(load_rows(tmp_path / "absent.jsonl")) == []
+  ```
+- [ ] **Step 2**: fail.
+- [ ] **Step 3**: implement `lib/state.py`.
+  ```python
+  from __future__ import annotations
+  import json, os, sys
+  from pathlib import Path
+  from typing import Iterable, Iterator
+
+  def append_row(path: Path, row: dict) -> None:
+      path.parent.mkdir(parents=True, exist_ok=True)
+      with path.open("a", encoding="utf-8") as f:
+          f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+  def load_rows(path: Path) -> Iterator[dict]:
+      if not path.exists():
+          return
+      with path.open("r", encoding="utf-8") as f:
+          for i, line in enumerate(f, 1):
+              line = line.strip()
+              if not line:
+                  continue
+              try:
+                  yield json.loads(line)
+              except json.JSONDecodeError:
+                  print(f"[state] corrupt line {i} in {path}, skipping", file=sys.stderr)
+
+  def atomic_replace_all(path: Path, rows: Iterable[dict]) -> None:
+      path.parent.mkdir(parents=True, exist_ok=True)
+      tmp = path.with_suffix(path.suffix + ".tmp")
+      with tmp.open("w", encoding="utf-8") as f:
+          for r in rows:
+              f.write(json.dumps(r, ensure_ascii=False) + "\n")
+      os.replace(tmp, path)
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit `feat(ext-stateful-watch): state JSONL I/O`.
+
+---
+
+## Task 5 — `lib/dws_client.py` (TDD)
+
+**Purpose**: one subprocess wrapper shared by 3 watchers. Injectable runner so tests never shell out.
+
+- [ ] **Step 1**: `tests/test_dws_client.py`.
+  ```python
+  from lib.dws_client import DwsClient, DwsCallFailed
+  import pytest, subprocess, json
+
+  def fake_ok(payload):
+      def _run(cmd, timeout):
+          return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+      return _run
+
+  def fake_fail(code=1, stderr="boom"):
+      def _run(cmd, timeout):
+          return subprocess.CompletedProcess(cmd, code, stdout="", stderr=stderr)
+      return _run
+
+  def test_invoke_success():
+      c = DwsClient(runner=fake_ok({"items": [1, 2]}))
+      assert c.invoke(["oa", "approval", "list-pending"]) == {"items": [1, 2]}
+
+  def test_invoke_nonzero_raises():
+      c = DwsClient(runner=fake_fail())
+      with pytest.raises(DwsCallFailed):
+          c.invoke(["oa", "approval", "list-pending"])
+
+  def test_invoke_bad_json_raises():
+      def runner(cmd, timeout):
+          return subprocess.CompletedProcess(cmd, 0, stdout="not json", stderr="")
+      c = DwsClient(runner=runner)
+      with pytest.raises(DwsCallFailed):
+          c.invoke(["oa", "approval", "list-pending"])
+  ```
+- [ ] **Step 2**: fail.
+- [ ] **Step 3**: implement.
+  ```python
+  from __future__ import annotations
+  import json, subprocess
+  from typing import Callable
+
+  Runner = Callable[[list[str], float], subprocess.CompletedProcess]
+
+  class DwsCallFailed(RuntimeError):
+      pass
+
+  def _default_runner(cmd: list[str], timeout: float) -> subprocess.CompletedProcess:
+      return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+
+  class DwsClient:
+      def __init__(self, runner: Runner | None = None, timeout: float = 30.0, binary: str = "dws"):
+          self._run = runner or _default_runner
+          self._timeout = timeout
+          self._binary = binary
+
+      def invoke(self, args: list[str]) -> dict:
+          cmd = [self._binary, *args, "--format", "json"]
+          try:
+              cp = self._run(cmd, self._timeout)
+          except subprocess.TimeoutExpired as e:
+              raise DwsCallFailed(f"timeout: {e}") from e
+          if cp.returncode != 0:
+              raise DwsCallFailed(f"exit {cp.returncode}: {cp.stderr.strip()[:200]}")
+          try:
+              return json.loads(cp.stdout)
+          except json.JSONDecodeError as e:
+              raise DwsCallFailed(f"bad json: {e}; head={cp.stdout[:120]!r}") from e
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit.
+
+---
+
+## Task 6 — `lib/watchers/approvals.py` (TDD)
+
+**Purpose**: pure diff function over two snapshots of approval state.
+
+- [ ] **Step 1**: `tests/test_approvals.py`.
+  Load `fixtures/approval_list_*.json` shapes (use a minimal 2-row fabricated dict shaped like the real fixtures).
+  ```python
+  from lib.watchers.approvals import diff_snapshots, detect_timeouts
+
+  def test_new_approval_no_event():
+      prev = []
+      curr = [{"approval_id": "a1", "role": "initiated", "status": "pending", "title": "加班"}]
+      assert diff_snapshots(prev, curr) == []  # new pending items are not themselves events
+
+  def test_status_transition_emits_event():
+      prev = [{"approval_id": "a1", "role": "initiated", "status": "pending", "title": "加班"}]
+      curr = [{"approval_id": "a1", "role": "initiated", "status": "approved", "title": "加班"}]
+      evs = diff_snapshots(prev, curr)
+      assert len(evs) == 1 and evs[0].kind == "approval" and "approved" in evs[0].detail
+
+  def test_timeout_pending_alerts_once():
+      snapshots = [{"approval_id": "a1", "role": "pending", "status": "pending", "title": "报销", "first_seen": 0}]
+      evs = detect_timeouts(snapshots, now=4 * 3600 + 1, timeout_hours=4, already_alerted=set())
+      assert len(evs) == 1
+      # second run with same id in already_alerted → suppressed
+      evs2 = detect_timeouts(snapshots, now=5 * 3600, timeout_hours=4, already_alerted={"a1"})
+      assert evs2 == []
+  ```
+- [ ] **Step 2**: fail.
+- [ ] **Step 3**: implement `lib/watchers/approvals.py`. Pure functions, no I/O. Sketch:
+  ```python
+  def diff_snapshots(prev: list[dict], curr: list[dict]) -> list[Event]:
+      prev_map = {r["approval_id"]: r for r in prev}
+      out = []
+      for row in curr:
+          p = prev_map.get(row["approval_id"])
+          if p is None:
+              continue  # new item = no event yet; becomes event on next transition or timeout
+          if p["status"] != row["status"]:
+              out.append(Event(
+                  kind="approval",
+                  source_id=row["approval_id"],
+                  severity="info",
+                  title=row.get("title", ""),
+                  detail=f"{p['status']} -> {row['status']}",
+                  extra={"role": row.get("role")},
+              ))
+      return out
+
+  def detect_timeouts(snapshots, now, timeout_hours, already_alerted):
+      out = []
+      for row in snapshots:
+          if row.get("role") != "pending" or row.get("status") != "pending":
+              continue
+          if now - row.get("first_seen", now) < timeout_hours * 3600:
+              continue
+          if row["approval_id"] in already_alerted:
+              continue
+          out.append(Event(
+              kind="approval", source_id=row["approval_id"], severity="warn",
+              title=row.get("title", ""), detail=f"pending > {timeout_hours}h",
+              extra={"role": "pending"},
+          ))
+      return out
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit.
+
+---
+
+## Task 7 — `lib/watchers/reports.py` (TDD)
+
+**Purpose**: delta filter over report IDs.
+
+- [ ] **Step 1**: `tests/test_reports.py`.
+  ```python
+  from lib.watchers.reports import filter_new
+
+  def test_filter_new_excludes_seen():
+      seen = {"r1", "r2"}
+      curr = [{"report_id": "r2", "sender": "A", "title": "日报"},
+              {"report_id": "r3", "sender": "B", "title": "日报"}]
+      evs = filter_new(seen, curr)
+      assert len(evs) == 1 and evs[0].source_id == "r3"
+
+  def test_filter_new_all_fresh():
+      evs = filter_new(set(), [{"report_id": "r1", "sender": "A", "title": "日报"}])
+      assert len(evs) == 1
+  ```
+- [ ] **Step 2**: fail.
+- [ ] **Step 3**: implement.
+  ```python
+  def filter_new(seen_ids: set[str], curr: list[dict]) -> list[Event]:
+      return [
+          Event(kind="report", source_id=r["report_id"], severity="info",
+                title=r.get("title", ""), detail=f"new from {r.get('sender', '?')}",
+                extra={"template": r.get("template")})
+          for r in curr if r["report_id"] not in seen_ids
+      ]
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit.
+
+---
+
+## Task 8 — `lib/watchers/todos.py` (TDD)
+
+**Purpose**: stage-machine for deadlines.
+
+Stages: `warned_24h` (due within 24h, not yet warned) → `overdue_day1` (just crossed due) → `overdue_daily` (every subsequent 24h tick) → `closed` (done/deleted, terminal).
+
+- [ ] **Step 1**: `tests/test_todos.py`.
+  ```python
+  from lib.watchers.todos import next_stages
+
+  def test_fresh_todo_within_24h_emits_warn():
+      state_map = {}
+      curr = [{"todo_id": "t1", "due_time": 3600, "status": "todo", "title": "写周报"}]
+      evs = next_stages(state_map, curr, now=0)
+      assert len(evs) == 1 and evs[0].detail.startswith("warn_24h")
+
+  def test_warned_todo_not_re_warned():
+      state_map = {"t1": {"stage": "warned_24h"}}
+      curr = [{"todo_id": "t1", "due_time": 3600, "status": "todo", "title": "写周报"}]
+      assert next_stages(state_map, curr, now=0) == []
+
+  def test_overdue_day1_from_warned():
+      state_map = {"t1": {"stage": "warned_24h"}}
+      curr = [{"todo_id": "t1", "due_time": 0, "status": "todo", "title": "写周报"}]
+      evs = next_stages(state_map, curr, now=100)
+      assert len(evs) == 1 and "overdue_day1" in evs[0].detail
+
+  def test_done_todo_emits_closed_once():
+      state_map = {"t1": {"stage": "warned_24h"}}
+      curr = [{"todo_id": "t1", "due_time": 0, "status": "done", "title": "写周报"}]
+      evs = next_stages(state_map, curr, now=100)
+      assert len(evs) == 1 and "closed" in evs[0].detail
+      state_map2 = {"t1": {"stage": "closed"}}
+      assert next_stages(state_map2, curr, now=200) == []
+  ```
+- [ ] **Step 2**: fail.
+- [ ] **Step 3**: implement.
+  ```python
+  def next_stages(state_map, curr, now):
+      out = []
+      for t in curr:
+          tid = t["todo_id"]
+          prior = state_map.get(tid, {}).get("stage")
+          if t["status"] in ("done", "deleted"):
+              if prior != "closed":
+                  out.append(Event("todo", tid, "info", t.get("title", ""), "closed"))
+              continue
+          due = t.get("due_time", 0)
+          if due == 0:
+              continue
+          if now < due:
+              if due - now <= 24 * 3600 and prior is None:
+                  out.append(Event("todo", tid, "warn", t.get("title", ""), "warn_24h"))
+          else:  # overdue
+              if prior in (None, "warned_24h"):
+                  out.append(Event("todo", tid, "alert", t.get("title", ""), "overdue_day1"))
+              elif prior == "overdue_day1" and now - due >= 24 * 3600:
+                  out.append(Event("todo", tid, "alert", t.get("title", ""), "overdue_daily"))
+      return out
+  ```
+- [ ] **Step 4**: green.
+- [ ] **Step 5**: commit.
+
+---
+
+## Task 9–11 — scripts (three wire-up files + e2e tests)
+
+Each `scripts/watch_*.py` is a thin main that:
+1. Loads config (`lib.config.load()`)
+2. Reads prior state (`lib.state.load_rows`)
+3. Calls DwsClient to get current data
+4. Invokes its watcher pure function
+5. Writes new state records
+6. Renders events as markdown to stdout; empty stdout on DwsCallFailed
+
+**Example — `scripts/watch_approvals.py`** (Task 9):
+
 ```python
+#!/usr/bin/env python3
 from __future__ import annotations
-
-import json
+import sys, time
 from pathlib import Path
-
-import pytest
-
-from lib.state import append_rows, load_active_rows, mark_resolved
-
-
-def test_append_and_load(tmp_path: Path) -> None:
-    p = tmp_path / "state.jsonl"
-    rows = [
-        {"event_id": "a", "resolved_at": None, "schema_version": 1},
-        {"event_id": "b", "resolved_at": None, "schema_version": 1},
-    ]
-    append_rows(p, rows)
-
-    loaded = load_active_rows(p)
-    ids = {r["event_id"] for r in loaded}
-    assert ids == {"a", "b"}
-
-
-def test_load_active_excludes_resolved(tmp_path: Path) -> None:
-    p = tmp_path / "state.jsonl"
-    append_rows(
-        p,
-        [
-            {"event_id": "a", "resolved_at": None, "schema_version": 1},
-            {"event_id": "b", "resolved_at": 999, "schema_version": 1},
-        ],
-    )
-    ids = {r["event_id"] for r in load_active_rows(p)}
-    assert ids == {"a"}
-
-
-def test_mark_resolved_atomic(tmp_path: Path) -> None:
-    p = tmp_path / "state.jsonl"
-    append_rows(
-        p,
-        [
-            {"event_id": "a", "resolved_at": None, "schema_version": 1},
-            {"event_id": "b", "resolved_at": None, "schema_version": 1},
-        ],
-    )
-    mark_resolved(p, event_id="a", resolved_at_ms=123_456)
-
-    # Reload full file (not just active)
-    raw = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line]
-    by_id = {r["event_id"]: r for r in raw}
-    assert by_id["a"]["resolved_at"] == 123_456
-    assert by_id["b"]["resolved_at"] is None
-
-
-def test_load_from_missing_file_returns_empty(tmp_path: Path) -> None:
-    p = tmp_path / "nonexistent.jsonl"
-    assert load_active_rows(p) == []
-
-
-def test_corrupt_line_is_skipped_not_fatal(tmp_path: Path) -> None:
-    p = tmp_path / "state.jsonl"
-    p.write_text(
-        '{"event_id": "a", "resolved_at": null, "schema_version": 1}\n'
-        "NOT_JSON_GARBAGE\n"
-        '{"event_id": "b", "resolved_at": null, "schema_version": 1}\n',
-        encoding="utf-8",
-    )
-    ids = {r["event_id"] for r in load_active_rows(p)}
-    assert ids == {"a", "b"}
-```
-
-- [ ] **Step 2: Run, verify failure**
-
-```bash
-python -m pytest tests/test_state.py -v
-```
-Expected: `ModuleNotFoundError`
-
-- [ ] **Step 3: Implement lib/state.py**
-
-```python
-"""JSONL state persistence for ext-stateful-watch.
-
-Guarantees:
-- append_rows: atomic for single lines < PIPE_BUF (~4KB). Our rows are well
-  under 4KB so single-line writes are atomic at OS level.
-- mark_resolved: read-modify-write via temp file + os.replace (POSIX atomic;
-  Windows guarantees are weaker but acceptable for our low-contention case).
-- load_active_rows: tolerates corrupt lines (skips + logs) — cron must never
-  hard-fail on bad state.
-"""
-
-from __future__ import annotations
-
-import json
-import logging
-import os
-import tempfile
-from pathlib import Path
-from typing import Any
-
-logger = logging.getLogger(__name__)
-
-
-def append_rows(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Append rows as JSONL. Creates parent dirs if missing."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
-            f.write("\n")
-
-
-def load_active_rows(path: Path) -> list[dict[str, Any]]:
-    """Load rows with resolved_at == None. Missing file → []."""
-    if not path.exists():
-        return []
-    out: list[dict[str, Any]] = []
-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as e:
-            logger.warning("skipping corrupt line %d in %s: %s", lineno, path, e)
-            continue
-        if row.get("resolved_at") is None:
-            out.append(row)
-    return out
-
-
-def mark_resolved(path: Path, *, event_id: str, resolved_at_ms: int) -> None:
-    """Mark a single event_id resolved in-place. Atomic via temp + replace."""
-    if not path.exists():
-        return
-
-    lines_out: list[str] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            # preserve corrupt lines untouched so operator can inspect
-            lines_out.append(line)
-            continue
-        if row.get("event_id") == event_id and row.get("resolved_at") is None:
-            row["resolved_at"] = resolved_at_ms
-        lines_out.append(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
-
-    # atomic temp-then-replace
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        delete=False,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    ) as tmp:
-        tmp.write("\n".join(lines_out))
-        tmp.write("\n")
-        tmp_name = tmp.name
-    os.replace(tmp_name, path)
-```
-
-- [ ] **Step 4: Run tests**
-
-```bash
-python -m pytest tests/test_state.py -v
-```
-Expected: 5 passed
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/state.py tests/test_state.py
-git commit -m "feat(ext-stateful-watch): JSONL state with atomic mark_resolved"
-```
-
----
-
-## Task 4: DwsClient — subprocess wrapper
-
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/lib/dws_client.py`
-- Test: `hermes-extensions/ext-stateful-watch/tests/test_dws_client.py`
-
-**Why inject subprocess.run:** tests MUST NOT shell out to real dws. We pass `runner: Callable[[list[str]], subprocess.CompletedProcess]` so tests substitute a fake. Production uses `subprocess.run` default.
-
-- [ ] **Step 1: Write failing tests**
-
-`tests/test_dws_client.py`:
-```python
-from __future__ import annotations
-
-import subprocess
-from typing import Any
-
-import pytest
-
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from lib.state import load_rows, append_row
 from lib.dws_client import DwsClient, DwsCallFailed
-from lib.event import Event
-
-
-def _fake_runner(outputs: dict[tuple[str, ...], tuple[int, str, str]]):
-    """Map argv-tuple → (returncode, stdout, stderr)."""
-    def runner(argv: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
-        key = tuple(argv[1:])  # drop 'dws' prefix
-        rc, out, err = outputs.get(key, (127, "", "no fake for " + " ".join(argv)))
-        return subprocess.CompletedProcess(argv, rc, out, err)
-    return runner
-
-
-def test_list_mentions_parses_dws_json() -> None:
-    fake = _fake_runner({
-        ("chat", "search", "--query", "@我", "--yes", "--format", "json"): (
-            0,
-            '{"result":{"value":[{'
-            '"messageId":"m1","openConversationId":"c1","conversationTitle":"t1",'
-            '"senderUserId":"u1","senderNick":"王总","text":"进度？","sendTime":1776000000000'
-            '}]}}',
-            "",
-        ),
-    })
-    client = DwsClient(runner=fake)
-    events = client.list_mentions_in_query("@我")
-    assert len(events) == 1
-    assert events[0].sender_name == "王总"
-    assert events[0].conversation_id == "c1"
-
-
-def test_has_my_reply_after_true_when_reply_exists() -> None:
-    fake = _fake_runner({
-        ("chat", "message", "list", "--conversation-id", "c1", "--yes", "--format", "json"): (
-            0,
-            '{"result":{"messages":['
-            '{"senderUserId":"me","sendTime":2_000_000_000},'
-            '{"senderUserId":"other","sendTime":1_500_000_000}'
-            ']}}'.replace("_", ""),
-            "",
-        ),
-    })
-    client = DwsClient(runner=fake, my_user_id="me")
-    assert client.has_my_reply_after("c1", sent_at_ms=1_000_000_000) is True
-
-
-def test_failing_dws_raises() -> None:
-    fake = _fake_runner({
-        ("chat", "search", "--query", "x", "--yes", "--format", "json"): (
-            1, "", "auth expired"
-        ),
-    })
-    client = DwsClient(runner=fake)
-    with pytest.raises(DwsCallFailed) as excinfo:
-        client.list_mentions_in_query("x")
-    assert "auth expired" in str(excinfo.value)
-```
-
-Note: the fake's messageId-to-mention shape is a **simplification** — the real `dws chat search` returns conversations, not messages with mentions. The test uses a synthetic shape; the implementation in Step 3 must match. Treat this as "we own the fake shape" — if v0.2 integration reveals different reality, update both the fake and parser.
-
-- [ ] **Step 2: Run, verify failure**
-
-```bash
-python -m pytest tests/test_dws_client.py -v
-```
-Expected: `ModuleNotFoundError`
-
-- [ ] **Step 3: Implement lib/dws_client.py**
-
-```python
-"""Thin subprocess wrapper around `dws` CLI.
-
-Design constraints:
-- stdlib only (no requests/httpx — runs in Hermes venv constraint)
-- Runner injectable for tests; prod uses subprocess.run
-- Fails loud (raises DwsCallFailed) — cron caller decides suppress vs propagate
-"""
-
-from __future__ import annotations
-
-import json
-import subprocess
-from dataclasses import dataclass
-from typing import Any, Callable
-
-from lib.event import Event
-
-Runner = Callable[[list[str], float], subprocess.CompletedProcess[str]]
-
-
-class DwsCallFailed(RuntimeError):
-    pass
-
-
-def _default_runner(argv: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-
-
-@dataclass
-class DwsClient:
-    runner: Runner = _default_runner
-    timeout_s: float = 30.0
-    my_user_id: str = ""  # filled via config
-
-    def _call(self, *args: str) -> dict[str, Any]:
-        argv = ["dws", *args, "--yes", "--format", "json"]
-        cp = self.runner(argv, self.timeout_s)
-        if cp.returncode != 0:
-            raise DwsCallFailed(f"dws {' '.join(args)} exit {cp.returncode}: {cp.stderr}")
-        try:
-            return json.loads(cp.stdout)
-        except json.JSONDecodeError as e:
-            raise DwsCallFailed(f"dws {' '.join(args)} emitted non-JSON: {e}") from e
-
-    def list_mentions_in_query(self, query: str) -> list[Event]:
-        """Return Events matching the search query.
-
-        v0.2 uses `dws chat search`. The exact mention-detection predicate
-        may need to evolve as we learn dws's actual response shape —
-        keep this method as the single translation point.
-        """
-        data = self._call("chat", "search", "--query", query)
-        msgs = (data.get("result") or {}).get("value") or []
-        out: list[Event] = []
-        for m in msgs:
-            out.append(Event.from_dws_message(
-                msg_id=m["messageId"],
-                conversation_id=m["openConversationId"],
-                conversation_title=m.get("conversationTitle", ""),
-                sender_id=m["senderUserId"],
-                sender_name=m.get("senderNick", ""),
-                text=m.get("text", ""),
-                sent_at_ms=int(m["sendTime"]),
-            ))
-        return out
-
-    def has_my_reply_after(self, conversation_id: str, *, sent_at_ms: int) -> bool:
-        """True iff there's a message from `my_user_id` in `conversation_id`
-        with sendTime > sent_at_ms."""
-        if not self.my_user_id:
-            return False
-        data = self._call("chat", "message", "list", "--conversation-id", conversation_id)
-        msgs = (data.get("result") or {}).get("messages") or []
-        for m in msgs:
-            if m.get("senderUserId") == self.my_user_id and int(m.get("sendTime", 0)) > sent_at_ms:
-                return True
-        return False
-```
-
-- [ ] **Step 4: Run tests**
-
-```bash
-python -m pytest tests/test_dws_client.py -v
-```
-Expected: 3 passed
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/dws_client.py tests/test_dws_client.py
-git commit -m "feat(ext-stateful-watch): DwsClient with injectable runner"
-```
-
----
-
-## Task 5: Dedup algorithm
-
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/lib/dedup.py`
-- Test: `hermes-extensions/ext-stateful-watch/tests/test_dedup.py`
-
-- [ ] **Step 1: Write failing tests**
-
-`tests/test_dedup.py`:
-```python
-from __future__ import annotations
-
-from pathlib import Path
-
-from lib.dedup import filter_new_events
-from lib.event import Event
-from lib.state import append_rows, load_active_rows
-
-
-def _make(msg_id: str) -> Event:
-    return Event.from_dws_message(
-        msg_id=msg_id,
-        conversation_id="c1",
-        conversation_title="t",
-        sender_id="s",
-        sender_name="S",
-        text=msg_id,
-        sent_at_ms=1_000_000,
-    )
-
-
-def test_first_run_all_events_are_new(tmp_path: Path) -> None:
-    state = tmp_path / "s.jsonl"
-    events = [_make("m1"), _make("m2"), _make("m3")]
-    new = filter_new_events(events, state_path=state, now_ms=2_000_000)
-    assert {e.event_id for e in new} == {e.event_id for e in events}
-    # state persisted
-    assert len(load_active_rows(state)) == 3
-
-
-def test_second_run_all_events_suppressed(tmp_path: Path) -> None:
-    state = tmp_path / "s.jsonl"
-    events = [_make("m1"), _make("m2")]
-    first = filter_new_events(events, state_path=state, now_ms=1)
-    second = filter_new_events(events, state_path=state, now_ms=2)
-    assert len(first) == 2
-    assert second == []
-
-
-def test_only_new_ones_returned(tmp_path: Path) -> None:
-    state = tmp_path / "s.jsonl"
-    filter_new_events([_make("m1")], state_path=state, now_ms=1)
-    result = filter_new_events(
-        [_make("m1"), _make("m2"), _make("m3")],
-        state_path=state,
-        now_ms=2,
-    )
-    new_ids = {e.event_id for e in result}
-    assert new_ids == {_make("m2").event_id, _make("m3").event_id}
-
-
-def test_resolved_events_dont_re_alert(tmp_path: Path) -> None:
-    state = tmp_path / "s.jsonl"
-    # pre-seed: m1 was seen and then resolved
-    e1 = _make("m1")
-    append_rows(state, [{
-        "schema_version": 1,
-        "event_id": e1.event_id,
-        "category": "unreplied_mentions",
-        "resolved_at": 500,  # already resolved
-        "first_seen": 100,
-        "alerted_at": 100,
-        "source": {},
-    }])
-    result = filter_new_events([e1], state_path=state, now_ms=1_000)
-    # resolved doesn't reappear — load_active_rows filters it out of `seen`,
-    # so this IS treated as "new" and re-alerted. That's the intentional behavior
-    # for v0.2: if a resolved event reappears in dws search, we alert again.
-    # To suppress, v0.3+ should augment with "resolved_recently" window.
-    # Test documents the current behavior:
-    assert len(result) == 1
-```
-
-- [ ] **Step 2: Run, verify failure**
-
-```bash
-python -m pytest tests/test_dedup.py -v
-```
-Expected: `ModuleNotFoundError`
-
-- [ ] **Step 3: Implement lib/dedup.py**
-
-```python
-"""Dedup: split incoming events into new vs already-seen.
-
-v0.2 uses a simple "event_id in active state" check. resolved events are
-NOT in the seen set — meaning if they re-surface in dws search, they'll
-re-alert. That's intentional for v0.2 (rare) and can tighten in v0.3.
-"""
-
-from __future__ import annotations
-
-from pathlib import Path
-
-from lib.event import Event
-from lib.state import append_rows, load_active_rows
-
-
-def filter_new_events(
-    events: list[Event],
-    *,
-    state_path: Path,
-    now_ms: int,
-) -> list[Event]:
-    """Return events not present in active state; append new ones to state."""
-    seen = {row["event_id"] for row in load_active_rows(state_path)}
-    new = [e for e in events if e.event_id not in seen]
-    if new:
-        append_rows(state_path, [e.to_row(first_seen_ms=now_ms) for e in new])
-    return new
-```
-
-- [ ] **Step 4: Run tests**
-
-```bash
-python -m pytest tests/test_dedup.py -v
-```
-Expected: 4 passed
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add lib/dedup.py tests/test_dedup.py
-git commit -m "feat(ext-stateful-watch): pure-function dedup over state + events"
-```
-
----
-
-## Task 6: Script main — wire everything together
-
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/scripts/unreplied_mentions.py`
-- Create: `hermes-extensions/ext-stateful-watch/config.example.toml`
-- Test: `hermes-extensions/ext-stateful-watch/tests/test_script_e2e.py`
-
-- [ ] **Step 1: Write config.example.toml**
-
-```toml
-# ext-stateful-watch config
-# Install to: ~/.hermes/dingtalk-extensions/config/unreplied_mentions.toml
-
-my_user_id = "REPLACE_WITH_YOUR_DINGTALK_USER_ID"
-
-[watched_conversations]
-# Conversation IDs (from dingtalk.chat.search response, openConversationId)
-ids = [
-  # "cidXXX...==",
-]
-
-[time_window]
-# Only run effective filtering in work hours (UTC+8).
-# Outside window: script still runs but produces empty stdout.
-weekdays_only = true
-hour_start = 9
-hour_end = 19
-```
-
-- [ ] **Step 2: Write failing e2e test**
-
-`tests/test_script_e2e.py`:
-```python
-from __future__ import annotations
-
-import json
-import subprocess
-import sys
-from pathlib import Path
-from typing import Any
-
-import pytest
-
-
-def _write_config(tmp: Path, watched_ids: list[str]) -> Path:
-    cfg = tmp / "config.toml"
-    ids_str = ",\n".join(f'  "{cid}"' for cid in watched_ids)
-    cfg.write_text(
-        f'my_user_id = "me"\n'
-        f"[watched_conversations]\n"
-        f"ids = [\n{ids_str}\n]\n"
-        f"[time_window]\n"
-        f"weekdays_only = false\n"
-        f"hour_start = 0\n"
-        f"hour_end = 24\n",
-        encoding="utf-8",
-    )
-    return cfg
-
-
-def test_main_emits_markdown_for_new_events(tmp_path, monkeypatch, capsys):
-    # Arrange: config + empty state + stub dws
-    cfg = _write_config(tmp_path, ["c1"])
-    state_dir = tmp_path / "state"
-
-    fake_dws_response = json.dumps({
-        "result": {"value": [{
-            "messageId": "m1",
-            "openConversationId": "c1",
-            "conversationTitle": "K1应援组",
-            "senderUserId": "u_boss",
-            "senderNick": "王总",
-            "text": "进度怎么样？",
-            "sendTime": 1776000000000,
-        }]}
-    })
-
-    from scripts import unreplied_mentions as script
-
-    def fake_runner(argv, timeout):
-        return subprocess.CompletedProcess(argv, 0, fake_dws_response, "")
-
-    script.main(
-        config_path=cfg,
-        state_dir=state_dir,
-        now_ms=1776000300000,
-        runner=fake_runner,
-    )
-    out = capsys.readouterr().out
-    assert "王总" in out
-    assert "K1应援组" in out
-    assert "1 条" in out or "1 new" in out.lower()  # whichever phrasing
-
-
-def test_main_emits_empty_when_no_new_events(tmp_path, capsys):
-    cfg = _write_config(tmp_path, ["c1"])
-    state_dir = tmp_path / "state"
-
-    fake_dws_response = json.dumps({"result": {"value": []}})
-
-    from scripts import unreplied_mentions as script
-
-    def fake_runner(argv, timeout):
-        return subprocess.CompletedProcess(argv, 0, fake_dws_response, "")
-
-    script.main(
-        config_path=cfg,
-        state_dir=state_dir,
-        now_ms=1776000300000,
-        runner=fake_runner,
-    )
-    out = capsys.readouterr().out
-    assert out.strip() == ""
-
-
-def test_main_silent_on_dws_failure(tmp_path, capsys):
-    """Cron must not fail if dws is down — just emit empty stdout."""
-    cfg = _write_config(tmp_path, ["c1"])
-    state_dir = tmp_path / "state"
-
-    from scripts import unreplied_mentions as script
-
-    def fake_runner(argv, timeout):
-        return subprocess.CompletedProcess(argv, 1, "", "auth expired")
-
-    script.main(
-        config_path=cfg,
-        state_dir=state_dir,
-        now_ms=1776000300000,
-        runner=fake_runner,
-    )
-    out = capsys.readouterr().out
-    assert out.strip() == ""
-```
-
-- [ ] **Step 3: Run, verify failure**
-
-```bash
-python -m pytest tests/test_script_e2e.py -v
-```
-Expected: `ImportError` or `AttributeError`
-
-- [ ] **Step 4: Implement scripts/unreplied_mentions.py**
-
-```python
-"""Cron script: list new @mentions, emit markdown to stdout.
-
-Run via Hermes cron:
-  subprocess.run([sys.executable, scripts/unreplied_mentions.py])
-
-Hermes prepends our stdout as `## Script Output` into the agent prompt.
-So our contract is: stdout = human-readable markdown (or empty = no news).
-
-stderr = free-form diagnostics. Hermes logs but doesn't inject it.
-"""
-
-from __future__ import annotations
-
-import argparse
-import datetime as dt
-import logging
-import subprocess
-import sys
-import tomllib
-from pathlib import Path
-from typing import Callable
-
-# Make lib/ importable regardless of cwd.
-_HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE.parent))
-
-from lib.dedup import filter_new_events
-from lib.dws_client import DwsCallFailed, DwsClient
-from lib.event import Event
-
-logger = logging.getLogger(__name__)
-
-
-def _in_time_window(now: dt.datetime, *, weekdays_only: bool, hour_start: int, hour_end: int) -> bool:
-    if weekdays_only and now.weekday() >= 5:
-        return False
-    return hour_start <= now.hour < hour_end
-
-
-def _format_markdown(events: list[Event]) -> str:
-    if not events:
-        return ""
-    lines = [f"你有 {len(events)} 条新的未回 @ 消息："]
-    for e in events:
-        sent = dt.datetime.fromtimestamp(e.sent_at_ms / 1000).strftime("%H:%M")
-        preview = e.text[:60].replace("\n", " ")
-        lines.append(
-            f"- **{e.conversation_title}** · {e.sender_name} ({sent})：{preview}"
-        )
-    return "\n".join(lines)
-
-
-def main(
-    *,
-    config_path: Path,
-    state_dir: Path,
-    now_ms: int | None = None,
-    runner: Callable | None = None,
-) -> int:
-    now_ms = now_ms if now_ms is not None else int(dt.datetime.now().timestamp() * 1000)
-    now_dt = dt.datetime.fromtimestamp(now_ms / 1000)
-
-    # Load config
-    with config_path.open("rb") as f:
-        cfg = tomllib.load(f)
-
-    tw = cfg.get("time_window", {})
-    if not _in_time_window(
-        now_dt,
-        weekdays_only=tw.get("weekdays_only", True),
-        hour_start=tw.get("hour_start", 9),
-        hour_end=tw.get("hour_end", 19),
-    ):
-        return 0
-
-    my_user_id = cfg.get("my_user_id", "")
-    watched_ids: list[str] = (cfg.get("watched_conversations") or {}).get("ids") or []
-    if not watched_ids:
-        return 0
-
-    client_kwargs = {"my_user_id": my_user_id}
-    if runner is not None:
-        client_kwargs["runner"] = runner
-    client = DwsClient(**client_kwargs)
-
-    # v0.2 MVP: search for @我 across watched conversations. Since dws search
-    # doesn't take a conversation filter, we just search the query and intersect
-    # with watched_ids client-side.
+from lib.watchers.approvals import diff_snapshots, detect_timeouts
+from lib.config import load_config
+
+def main() -> int:
+    cfg = load_config()["approvals"]
+    state_dir = Path.home() / ".hermes" / "dingtalk-extensions" / "state"
+    state_file = state_dir / "approvals.jsonl"
+    client = DwsClient()
     try:
-        all_mentions = client.list_mentions_in_query("@我")
+        initiated = client.invoke(["oa", "approval", "list-initiated"]).get("items", [])
+        pending   = client.invoke(["oa", "approval", "list-pending"]).get("items", [])
     except DwsCallFailed as e:
-        logger.warning("dws call failed, emitting empty stdout: %s", e)
+        print(f"[approvals] dws failed: {e}", file=sys.stderr)
+        return 0  # cron resilience: empty stdout, exit 0
+    # tag role + first_seen for new items
+    now = int(time.time())
+    prior_rows = list(load_rows(state_file))
+    prior_snapshots = _last_snapshot(prior_rows)
+    curr_snapshot = _build_snapshot(initiated, pending, prior_snapshots, now)
+    append_row(state_file, {"kind": "snapshot", "ts": now, "items": curr_snapshot})
+    events = diff_snapshots(prior_snapshots, curr_snapshot)
+    already_alerted = _extract_alerted(prior_rows)
+    events += detect_timeouts(curr_snapshot, now, cfg["timeout_hours"], already_alerted)
+    if not events:
         return 0
-
-    filtered = [e for e in all_mentions if e.conversation_id in set(watched_ids)]
-    state_path = state_dir / "unreplied_mentions.jsonl"
-    new_events = filter_new_events(filtered, state_path=state_path, now_ms=now_ms)
-
-    md = _format_markdown(new_events)
-    if md:
-        sys.stdout.write(md + "\n")
+    print("# stateful-watch / approvals\n")
+    for e in events:
+        print(e.to_markdown_row())
+        append_row(state_file, {"kind": "alerted", "ts": now, "event_id": e.event_id, "source_id": e.source_id})
     return 0
 
-
-def _default_paths() -> tuple[Path, Path]:
-    home = Path.home()
-    return (
-        home / ".hermes" / "dingtalk-extensions" / "config" / "unreplied_mentions.toml",
-        home / ".hermes" / "dingtalk-extensions" / "state",
-    )
-
-
+# helpers: _last_snapshot, _build_snapshot, _extract_alerted — see repo
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ext-stateful-watch: unreplied mentions")
-    default_config, default_state = _default_paths()
-    parser.add_argument("--config", type=Path, default=default_config)
-    parser.add_argument("--state-dir", type=Path, default=default_state)
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
-    sys.exit(main(config_path=args.config, state_dir=args.state_dir))
+    sys.exit(main())
 ```
 
-- [ ] **Step 5: Run tests**
+**e2e test pattern** (same for all 3, in `tests/test_e2e.py`):
 
-```bash
-python -m pytest tests/ -v
+```python
+def test_approvals_e2e_transition(tmp_path, monkeypatch):
+    # 1st run: write initial snapshot
+    monkeypatch.setenv("HOME", str(tmp_path))
+    fake_runs = [
+        {"items": [{"approval_id": "a1", "status": "pending", "title": "加班"}]},
+        {"items": []},
+    ]
+    # inject DwsClient.runner via monkeypatch, run script main, assert stdout empty
+    # 2nd run: a1 flips to approved
+    fake_runs = [
+        {"items": [{"approval_id": "a1", "status": "approved", "title": "加班"}]},
+        {"items": []},
+    ]
+    # run main, assert stdout contains "approved"
 ```
-Expected: all tests pass (15+ total)
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add scripts/unreplied_mentions.py config.example.toml tests/test_script_e2e.py
-git commit -m "feat(ext-stateful-watch): main script wiring dedup + dws + markdown stdout"
-```
+Each Task 9/10/11 follows the same 5 steps:
+- [ ] Step 1: write e2e test (xfail then runs)
+- [ ] Step 2: implement script
+- [ ] Step 3: green
+- [ ] Step 4: run real: `python scripts/watch_<x>.py` against live dws; spot-check stdout format
+- [ ] Step 5: commit
 
 ---
 
-## Task 7: cron prompt template
+## Task 12 — cron prompt templates
 
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/templates/unreplied_mentions.yaml`
+**Files**: `templates/approvals.yaml`, `templates/reports.yaml`, `templates/todos.yaml`.
 
-- [ ] **Step 1: Write template**
-
+Each yaml has two keys:
 ```yaml
-# Hermes cron template: 钉钉未回 @ 告警助理
-#
-# 使用方式：
-#   hermes cronjob create \
-#     --schedule "*/30 * * * *" \
-#     --script ~/.hermes/scripts/stateful_watch/unreplied_mentions.py \
-#     --prompt "$(cat ~/.hermes/dingtalk-extensions/templates/unreplied_mentions.yaml)"
-#
-# 契约：见 docs/decisions/003 / 004 / 005
-
-name: "unreplied_mentions_watch"
-schedule: "*/30 9-19 * * 1-5"
-deliver: "dingtalk"
-
+schedule: "*/30 * * * *"   # suggested, operator overrides
 prompt: |
-  你是"@未回"告警助理。script 阶段已过滤掉之前告警过的事件，
-  prompt 头部 `## Script Output` 里的每条都是**新**的需要处理的。
-
-  ## 参数命名契约
-
-  - 参数名一律用 kebab-case（`conversation-id`、`template-id`）
-  - 参数描述里的 camelCase 是语义名不是 key
-  - 已知隐式 required（ADR-004）：
-    * `dingtalk.chat.message.send-by-bot` 必传 `robot-code` + `title`
-    * `dingtalk.oa.approval.list-initiated` 必传 `process-code`
-
-  ## 执行步骤
-
-  1. **读 Script Output**
-     如果是空的（没有新 @），直接输出"无新告警"，结束。
-
-  2. **对每条新 @，判断紧急度**
-     - 看发送时间距今多久（script 里给了时间戳）
-     - 看发送者（直属上级 / 同事 / 客户）——可调 `dingtalk.contact.user.get` 查部门
-     - 看消息预览（是问句？通知？决策请求？）
-
-  3. **选择行动**
-     - 紧急（>2h 未回 + 是上级/客户）→ 调 `dingtalk.ding.message.send`
-       发 DING 提醒自己，附原消息预览
-     - 中等（>2h 未回 + 同事）→ 在 Hermes 侧 `deliver="dingtalk"` 推送
-       一条汇总到自己（勿扰模式会合并）
-     - 低优先级（<2h 或仅通知类）→ 记录不打扰，输出待办列表让用户之后看
-
-  4. **不要回复原消息**
-     v0.2 不做自动回复——决策权保留给人。只做通知层。
-
-  ## 输出
-
-  成功：`已处理 N 条新 @ 告警：<简要列表>`
-  失败：具体错误 + 原 Script Output 内容（方便调试）
+  你收到了 stateful-watch/<kind> 的事件列表（来自上方 script 输出）。
+  Triage 规则：
+    - severity=alert → dws ding message send 给自己
+    - severity=warn  → Hermes todo 加一条今日待办
+    - severity=info  → 一句话日志即可
+  不要对同一 event_id 重复处理；对最紧迫的前 3 条采取动作，其他归纳汇总。
 ```
 
-- [ ] **Step 2: Commit**
+Template-specific triage:
+- approvals: 上游角色 = 上级/客户 → 提升一档 severity
+- reports: 发信人在 `include_senders` → alert；否则 info
+- todos: overdue_daily → 降级成 warn（避免每天轰炸）
 
-```bash
-git add templates/unreplied_mentions.yaml
-git commit -m "feat(ext-stateful-watch): cron prompt template w/ ADR-003/004 contracts"
-```
+- [ ] Write 3 yaml files
+- [ ] commit `feat(ext-stateful-watch): cron prompt templates`
 
 ---
 
-## Task 8: install.sh
+## Task 13 — `install.sh`
 
-**Files:**
-- Create: `hermes-extensions/ext-stateful-watch/install.sh`
-
-- [ ] **Step 1: Write install.sh**
-
-```bash
-#!/usr/bin/env bash
-#
-# ext-stateful-watch installer.
-# Copies scripts to $HERMES_HOME/scripts/stateful_watch/ (Hermes requires this path).
-# Creates state + config dirs. Does NOT create the cron job — that's explicit.
-
-set -euo pipefail
-
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-EXT_HOME="$HERMES_HOME/dingtalk-extensions"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "==> Installing ext-stateful-watch to $HERMES_HOME"
-
-# 1. Scripts → Hermes's required path
-mkdir -p "$HERMES_HOME/scripts/stateful_watch"
-cp -r "$SCRIPT_DIR/scripts/"* "$HERMES_HOME/scripts/stateful_watch/"
-cp -r "$SCRIPT_DIR/lib" "$HERMES_HOME/scripts/stateful_watch/"
-echo "    scripts + lib → $HERMES_HOME/scripts/stateful_watch/"
-
-# 2. State + config dirs
-mkdir -p "$EXT_HOME/state"
-mkdir -p "$EXT_HOME/config"
-mkdir -p "$EXT_HOME/templates"
-echo "    state/config/templates dirs → $EXT_HOME/"
-
-# 3. Templates
-cp "$SCRIPT_DIR/templates/unreplied_mentions.yaml" "$EXT_HOME/templates/"
-echo "    prompt template → $EXT_HOME/templates/"
-
-# 4. Config — don't overwrite if user has customized
-CONFIG_DST="$EXT_HOME/config/unreplied_mentions.toml"
-if [ -f "$CONFIG_DST" ]; then
-  echo "    config exists, not overwriting: $CONFIG_DST"
-else
-  cp "$SCRIPT_DIR/config.example.toml" "$CONFIG_DST"
-  echo "    config template → $CONFIG_DST (EDIT THIS FILE)"
-fi
-
-cat <<EOF
-
-==> Install complete.
-
-Next steps:
-  1. Edit $CONFIG_DST
-     - set my_user_id (your DingTalk orgUserId)
-     - list watched conversation IDs under [watched_conversations]
-
-  2. Create the Hermes cron job:
-     hermes cronjob create \\
-       --schedule "*/30 9-19 * * 1-5" \\
-       --script $HERMES_HOME/scripts/stateful_watch/unreplied_mentions.py \\
-       --prompt "\$(cat $EXT_HOME/templates/unreplied_mentions.yaml)"
-
-  3. Tail the logs to verify first runs:
-     tail -F ~/.hermes/logs/cron/*.log
-EOF
-```
-
-- [ ] **Step 2: Make executable + commit**
-
-```bash
-chmod +x install.sh
-git add install.sh
-git commit -m "feat(ext-stateful-watch): install.sh — scripts to HERMES_HOME, no auto-cron"
-```
+- [ ] **Step 1**: script body.
+  ```bash
+  #!/usr/bin/env bash
+  set -euo pipefail
+  HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+  SRC="$(cd "$(dirname "$0")" && pwd)"
+  DST_SCRIPTS="$HERMES_HOME/scripts/stateful_watch"
+  DST_DATA="$HERMES_HOME/dingtalk-extensions"
+  mkdir -p "$DST_SCRIPTS" "$DST_DATA/state" "$DST_DATA/config" "$DST_DATA/templates"
+  cp -R "$SRC/lib" "$DST_SCRIPTS/"
+  cp -R "$SRC/scripts/." "$DST_SCRIPTS/"
+  cp -R "$SRC/templates/." "$DST_DATA/templates/"
+  # seed default config if absent
+  if [[ ! -f "$DST_DATA/config/stateful_watch.yaml" ]]; then
+    cat > "$DST_DATA/config/stateful_watch.yaml" <<YAML
+  approvals:
+    timeout_hours: 4
+    roles_high_priority: ["上级", "客户"]
+  reports:
+    include_senders: []
+    exclude_templates: []
+  todos:
+    warn_before_hours: 24
+  YAML
+  fi
+  cat <<EOF
+  Installed ext-stateful-watch to $DST_SCRIPTS
+  Next: create cron jobs (one per watcher you want enabled):
+    hermes cronjob create --schedule "*/30 * * * *" --script $DST_SCRIPTS/watch_approvals.py --prompt "\$(cat $DST_DATA/templates/approvals.yaml | yq -r .prompt)"
+    ... same for reports / todos
+  EOF
+  ```
+- [ ] **Step 2**: `bash -n install.sh` (syntax check).
+- [ ] **Step 3**: dry-run: `HERMES_HOME=/tmp/h-test bash install.sh && ls -R /tmp/h-test && rm -rf /tmp/h-test`.
+- [ ] **Step 4**: commit.
 
 ---
 
-## Task 9: ADR-005 — state schema decisions
+## Task 14 — `lib/config.py`
 
-**Files:**
-- Create: `docs/decisions/005-stateful-watch-state-schema.md` (repo-level, not under ext)
+Simple loader; no validation framework.
 
-- [ ] **Step 1: Write ADR-005**
-
-````markdown
-# ADR 005 — ext-stateful-watch state schema and evolution
-
-**日期**：2026-04-14
-**状态**：Accepted（v0.2 首版）
-**关联**：`hermes-extensions/ext-stateful-watch/DESIGN.md`、`ARCHITECTURE.md §4.2`
+- [ ] Test: `tests/test_config.py` covers (a) loads yaml, (b) missing file → defaults, (c) partial file → merges with defaults.
+- [ ] Implement: try-import yaml; if absent, hard-error with install hint.
+- [ ] Commit.
 
 ---
 
-## 1. 背景
+## Task 15 — ADR-005 state schema
 
-ext-stateful-watch 需要跨 cron 周期保持状态（已告警事件集合）。选项：JSONL / SQLite / Hermes memory_tool。
+**File**: `docs/decisions/005-stateful-watch-state-schema.md`.
 
-## 2. 决策
+Sections:
+1. Context — cross-run state needed for 3 watchers
+2. Decision — JSONL per-watcher files, no SQLite in v0.2
+3. Rejected alternatives — SQLite (overkill), memory_tool (session-scoped), Hermes-native state (would couple T2 to Hermes internals)
+4. Schema versions — v1 fields for each watcher (copied from DESIGN.md §2)
+5. Migration path — >5MB file triggers v0.3 SQLite consideration
+6. Out-of-scope — retention / rotation / encryption
 
-**v0.2 使用单一 JSONL 文件**：`~/.hermes/dingtalk-extensions/state/<category>.jsonl`
-
-### 2.1 为什么不用 SQLite
-
-- 量级小（单类别日增 <10 条，年增 <4k 条，远低于 10k 行 SQLite 门槛）
-- 写入模式纯 append（除极少 mark_resolved），SQLite 事务开销不划算
-- 可读性 / 诊断性：cat/grep 就能看 state，SQLite 需 sqlite3 CLI
-- 依赖最小化：stdlib `json` 够用，sqlite3 也是 stdlib 但增加代码复杂度
-
-**触发迁移阈值**：单文件 > 50MB → ADR-005 v2 定义 SQLite 方案（v0.3+ 处理）
-
-### 2.2 为什么不用 memory_tool
-
-- memory_tool 是 agent runtime 状态，按 session 隔离；cron 跨 session 不适用
-- cron script 在 agent 起来前运行，根本拿不到 memory_tool 句柄
-
-### 2.3 Schema 版本字段
-
-每行包含 `schema_version: 1`。v0.3 若要引入 v2 schema：
-1. 新代码支持读 v1 + v2，仅写 v2
-2. 迁移脚本把 v1 行在线升级（读 → 改 schema_version + 补字段 → 写）
-3. 3 个版本周期后彻底废弃 v1 读路径
-
-## 3. Schema v1 规范
-
-```json
-{
-  "schema_version": 1,
-  "event_id": "<sha256(msg_id)[:16]>",
-  "category": "unreplied_mentions",
-  "source": {
-    "conversation_id": "cidXXX==",
-    "conversation_title": "...",
-    "sender_id": "u_123",
-    "sender_name": "王总",
-    "text_preview": "...",   // max 80 chars
-    "sent_at": 1776160000000
-  },
-  "first_seen": 1776161000000,
-  "alerted_at": 1776161000000,
-  "resolved_at": null
-}
-```
-
-## 4. 降级方案
-
-**如果 Hermes `script` 参数被弃用或语义变化**：切换为独立 MCP server，注册 tool `dingtalk.dedup_check(events, category)`，让 agent 显式调用。代码上 `lib/dedup.py` + `lib/state.py` 直接复用，只替换 `scripts/unreplied_mentions.py` 为 MCP server 入口。
-
-## 5. 不做清单
-
-- ❌ 多租户（目录结构不预留）
-- ❌ 加密（state 是本机 $HOME 下文件，OS 权限已足）
-- ❌ 同步到远端（v0.5+ 才考虑）
-````
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add docs/decisions/005-stateful-watch-state-schema.md
-git commit -m "docs: ADR-005 — ext-stateful-watch JSONL schema + evolution"
-```
+- [ ] Write ADR
+- [ ] Commit `docs: ADR-005 stateful-watch state schema`
 
 ---
 
-## Task 10: Final verification
+## Task 16 — Final verification + rollout docs
 
-- [ ] **Step 1: Run full test suite**
-
-```bash
-cd hermes-extensions/ext-stateful-watch
-python -m pytest tests/ -v --tb=short
-```
-Expected: 15+ tests, all pass, < 1s wall time.
-
-- [ ] **Step 2: Run install.sh dry test**
-
-```bash
-HERMES_HOME="/tmp/hermes-test" bash install.sh
-ls -la /tmp/hermes-test/scripts/stateful_watch/
-ls -la /tmp/hermes-test/dingtalk-extensions/
-rm -rf /tmp/hermes-test
-```
-Expected: all files in correct locations, install.sh exits 0.
-
-- [ ] **Step 3: Update repo-level docs**
-
-Update `progress.md` v0.2 section from "未启动" → "v0.2 MVP 代码完成，待 1 周实战验证"
-
-Update `docs/ROADMAP.md` v0.2 section similarly.
-
-- [ ] **Step 4: Final commit**
-
-```bash
-git add progress.md docs/ROADMAP.md
-git commit -m "docs: mark ext-stateful-watch v0.2 MVP code complete"
-```
-
-- [ ] **Step 5: Push**
-
-```bash
-git push
-```
+- [ ] **Step 1**: `pytest tests/ -v` — all green, < 2s wall time.
+- [ ] **Step 2**: `bash install.sh` against throwaway `HERMES_HOME`; verify file layout.
+- [ ] **Step 3**: `python scripts/watch_todos.py` against live dws (safest — pure read); confirm stdout is valid markdown or empty.
+- [ ] **Step 4**: update `progress.md` v0.2 section: "MVP 代码完成，γ-todos 进入 7 天实战观察"
+- [ ] **Step 5**: update `docs/ROADMAP.md` v0.2 row accordingly.
+- [ ] **Step 6**: final commit + push.
+  ```bash
+  git add progress.md docs/ROADMAP.md
+  git commit -m "docs: ext-stateful-watch v0.2 MVP complete, γ-todos observation begun"
+  git push
+  ```
 
 ---
 
-## Spec Coverage Self-Review
+## Spec coverage self-review
 
-Checked against DESIGN.md sections:
-- §1 Architecture & data flow → Tasks 4, 6, 8
-- §2 State schema → Tasks 2, 3, 9 (ADR-005)
-- §3 MVP scope → Tasks 6 (watched_conversations config), 7 (cron schedule)
-- §4 Testing/install → Tasks 3-6 (unit tests), 6 (e2e), 8 (install), 10 (verification)
+Checked against brainstorm §1–§5:
+- §1 Architecture → Tasks 2, 9–11, 13
+- §2 State schema → Tasks 3, 4, 6–8, 15
+- §3 Delivery via stdout → Tasks 9–12
+- §4 Testing → Tasks 3–8 (unit), 9–11 (e2e), 16 (real run)
+- §5 Roll-out → Task 16
 
-No gaps. No placeholders. Method names consistent across tasks.
-
----
+No placeholders, no cross-task naming drift, no speculative shapes (Task 1 probes everything before code).
 
 ## Execution notes
 
-- **TDD strict**: every task writes test first, watches it fail, then implements
-- **Commit granularity**: one commit per task (9 commits total + docs update)
-- **No Hermes runtime tests**: v0.2 validates via unit + e2e with injected runner. Real Hermes cron verification is the 7-day observation period in ROADMAP v0.2 exit criteria.
-- **Estimated effort**: 4-6 hours single-session for a focused implementer, assuming dws CLI response shape matches the fake in Task 4 (if it differs, add a probe run upfront).
+- **TDD discipline**: every task writes test first, watches it fail, then implements.
+- **Commit granularity**: one commit per task → 15 commits + Task 16 final doc commit.
+- **Do not skip Task 1.** Second probe miss = second rewrite.
+- **If Task 1 reveals a fixture differs from assumed shape** (e.g., `report_id` is actually `biz_id`), amend the plan in place (this file) + note in DESIGN.md §Data shapes before touching watcher code.
+- **Estimated effort**: 6–9 hours single-session (3 watchers × ~1h each + base + install + docs).
