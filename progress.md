@@ -5,49 +5,72 @@
 ## 当前状态
 
 - **分支**: main（已 push）
-- **最新提交**: 523f370 — docs: 补 §1.4 反面论证 + 新增根目录 progress.md
-- **npm 发布**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.2`（2026-04-14；含 cobra 布尔 flag 修复，已 Hermes 端到端验证）
-- **Git tag**: v0.0.1（v0.0.2 待打）
+- **最新提交**: 91f5009 — docs: 标记 dws issue #107 已上报
+- **npm 发布**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（2026-04-14；含全角（必填）parser 修复）
+- **Git tag**: v0.0.1 / v0.0.2 / v0.0.4（v0.0.3 故意跳过——tarball 与 commit 不对齐）
+- **Hermes / Claude Code 双 host 整合**：均通过全局 bin（`AppData/Roaming/npm/dingtalk-workspace-mcp.cmd`）共用，升级一次双吃
 
 ## T1 — `packages/dingtalk-workspace-mcp`
 
-### 已完成
+### v0 已完成（功能闭环）
 
-- [x] v0 首版交付（1ce8822）
-- [x] pass 简化：help-tree 并行化、spawn 去重、更严类型（cd807d1）
-- [x] ADR-002：下线 `schema-json` 路径，help-tree 成为唯一权威源（da2097d）
-- [x] GitHub Actions CI 工作流（f27a783）
-- [x] npm publish 工作流（f27a783）
-- [x] 包名迁移 `@yoji/*` → `@sputnicyoji/*`（a235522）
-- [x] 81/81 测试通过（新增 3 条 2026-04-15 MCP 工具测试报告的回归用例）
-- [x] 修复 `schema-loader.ts` FLAG_LINE_RE：cobra 布尔 flag（如 `todo task delete --yes`）被误判为 string 的 bug（FLAG_LINE_RE 类型组收紧到 `string|int` 白名单，空组当 boolean）
-- [x] `docs/ARCHITECTURE.md` §1.4 反面论证：为什么不走其他三条路径（手写 MCP / 自建 CLI / Hermes 原生 plugin）
-- [x] 2026-04-15 MCP 工具测试报告诊断完成：82 工具中真正 T1 bug 仅 1 个（已修）；2 个是 agent 传参错；6 类是权限/配置/数据依赖，按设计穿透不管
-- [x] 手动发布 v0.0.1 到 npm
-- [x] Hermes 本地端到端验证（82 个 tool 暴露，真实 API 调用成功)
+- [x] 首版交付（1ce8822）+ 简化（cd807d1）
+- [x] ADR-002：下线 schema-json 路径，help-tree 唯一权威源
+- [x] ADR-003：`report.create` 契约（key=field_name + 字段规约 + dws CLI 不一致）
+- [x] ADR-004：dws 隐式 required flag 清单（B+C 路径，T1 不动 src）
+- [x] CI 工作流 + npm publish 工作流
+- [x] 包名 `@sputnicyoji/*`
+- [x] **v0.0.2** cobra 布尔 flag 修复 + `--version` 动态读包
+- [x] **v0.0.4** 全角（必填）parser 识别（attendance.summary 等 29 工具受益）
+- [x] 84/84 测试通过，tsc 清，含 6 条端到端回归用例
+- [x] Windows `npx` spawn 问题绕开：直接指向全局 bin
+- [x] Hermes + Claude Code 双 host 端到端验证：82 tools 全部加载
 
-### 待办
+### 端到端测试结果（v0.0.4，2026-04-14）
 
-- [x] **v0.0.2 已发布**：cobra 布尔 flag 修复 + `--version` 从 package.json 读；Hermes 端已整合并端到端验证
-- [x] Windows 下 npx 启动失败：绕开 npx，Hermes config 直接指向全局 bin `.cmd`
-- [x] 2026-04-15 重测最终分类：1 真 bug（todo_task_delete，已修复端到端通过）、2 非 bug（oa_approval_detail 数据依赖、oa_approval_list_forms 权限）、3 外部（report_create 待 CLI 对比验证、attendance_summary C0002 权限、chat_message_send_by_bot 无机器人）
-- [ ] CI 付费账单问题（hermes-dingtalk 为私有仓库，消耗付费分钟数）
-- [ ] `docs/COMPARISON.md` v0.1 必交付
-- [ ] v0.1 版本规划
-- [ ] Agent 侧文档：为描述带 API 字段名（如 `startTime`）的 flag 补 MCP schema 提示，防止 agent 误把描述当 key 名
-- [ ] report_create：直接 CLI 调用 vs MCP 调用对比，定位 SYSTEM_ERROR 归属
-- [ ] 打 git tag v0.0.2
+11/15 工具 ✅；4 个失败按设计透传：
+- `attendance.summary` / `oa.list-forms`：钉钉权限（C0002 / 200002）
+- `oa.list-initiated` / `chat.send-by-bot`：dws 隐式 required（已落 ADR-004 + prompt 兜底）
 
-## T2 — `hermes-extensions/`（未启动）
+### 上游 issues 已上报
 
-- [ ] `ext-cron-templates`（v0.1 附带）
-- [ ] `ext-stateful-watch`（v0.2）
-- [ ] `ext-long-content`（v0.3）
+- [#106](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/issues/106)：`report create --help` 缺 key=field_name 契约
+- [#107](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/issues/107)：多个 flag 在 API 必填但 help 未标 `(必填)`
 
-**准入门槛**：必须满足"离开 Hermes 独有能力就做不出"。
+### 待办（v0.1 准备）
 
-## 已知问题
+- [ ] **`docs/COMPARISON.md`**：v0.1 必交付，对比现存 5+ DingTalk MCP（差异化护城河）
+- [ ] **`docs/ROADMAP.md`**：v0.1 节奏、特性闭锁线
+- [ ] CI 付费账单：私有仓库消耗付费分钟，仍走手动发版
+- [ ] T1 schema 输出富化（不破坏 host-agnostic 前提下）：考虑从 dws example 字段抽取 `inputSchema.examples`，让 LLM 一眼看到正确 payload 结构
+- [ ] `--version` v0.0.4 字符串实测，必要时打 tag 备份记录
+
+## T2 — `hermes-extensions/`
+
+### 进行中
+
+- [x] **`ext-cron-templates/`** v0.1-draft 骨架（`README.md` + `daily_brief.yaml`）
+  - 内嵌 ADR-003（report.create 契约）+ ADR-004（隐式 required 清单）
+  - **未做**：`install.sh`（待 Hermes cronjob CLI 入口形态稳定，详见 ARCHITECTURE §4.4）
+
+### 待启动
+
+- [ ] **`ext-stateful-watch`** v0.2：跨周期状态告警（Hermes cron 单次执行做不到）
+  - 形态决策：Hermes cron `script` 参数（pre-run Python，stdout 注入 prompt）
+  - 准入：✓ 满足"离开 Hermes 独家能力做不出"
+- [ ] **`ext-long-content`** v0.3：delegate 处理长会议/文档
+  - 准入：✓ 依赖 Hermes delegate_tool / trajectory_compressor
+
+**T2 准入门槛**：必须满足"离开 Hermes 独家能力就做不出"。
+
+## 已知问题（环境层，不在 T1/T2 责任域）
 
 1. **CI 账单**：私有仓库消耗 GitHub Actions 付费分钟数，目前走手动发布规避
-2. **Windows npx 启动**：shell 找不到 binary，需要配 `cmd /c` 包装
+2. **Windows npx 启动**：MSYS shell 翻译 `/c` → `C:/`，建议用全局 bin 绝对路径绕开
 3. **Hermes `mcp list` 编码**：Windows GBK 控制台崩溃，需 `PYTHONIOENCODING=utf-8`
+
+## 下一阶段建议（按优先级）
+
+1. **v0.1 收尾文档**：`COMPARISON.md` + `ROADMAP.md`（半天）
+2. **T2 ext-stateful-watch 设计**：写 ADR-005 + 选定状态文件 schema（一天）
+3. **T2 ext-long-content brainstorming**：依赖 Hermes 内部 API 调研（半天）
