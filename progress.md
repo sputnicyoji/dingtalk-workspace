@@ -6,9 +6,8 @@
 
 - **分支**: main（已 push）
 - **最新提交**: 523f370 — docs: 补 §1.4 反面论证 + 新增根目录 progress.md
-- **npm 发布**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.1`（2026-04-13 手动发布；含 bug，见下）
-- **Git tag**: v0.0.1
-- **未发布**: abf0aed（cobra 布尔 flag 解析修复）待 v0.0.2 发版
+- **npm 发布**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.2`（2026-04-14；含 cobra 布尔 flag 修复，已 Hermes 端到端验证）
+- **Git tag**: v0.0.1（v0.0.2 待打）
 
 ## T1 — `packages/dingtalk-workspace-mcp`
 
@@ -29,12 +28,15 @@
 
 ### 待办
 
-- [ ] **发版 v0.0.2**：带 cobra 布尔 flag 修复，重发 npm + 打 tag
+- [x] **v0.0.2 已发布**：cobra 布尔 flag 修复 + `--version` 从 package.json 读；Hermes 端已整合并端到端验证
+- [x] Windows 下 npx 启动失败：绕开 npx，Hermes config 直接指向全局 bin `.cmd`
+- [x] 2026-04-15 重测最终分类：1 真 bug（todo_task_delete，已修复端到端通过）、2 非 bug（oa_approval_detail 数据依赖、oa_approval_list_forms 权限）、3 外部（report_create 待 CLI 对比验证、attendance_summary C0002 权限、chat_message_send_by_bot 无机器人）
 - [ ] CI 付费账单问题（hermes-dingtalk 为私有仓库，消耗付费分钟数）
-- [ ] Windows 下 `npx` MCP 启动失败（shell spawn 找不到 binary）
 - [ ] `docs/COMPARISON.md` v0.1 必交付
 - [ ] v0.1 版本规划
 - [ ] Agent 侧文档：为描述带 API 字段名（如 `startTime`）的 flag 补 MCP schema 提示，防止 agent 误把描述当 key 名
+- [ ] report_create：直接 CLI 调用 vs MCP 调用对比，定位 SYSTEM_ERROR 归属
+- [ ] 打 git tag v0.0.2
 
 ## T2 — `hermes-extensions/`（未启动）
 
