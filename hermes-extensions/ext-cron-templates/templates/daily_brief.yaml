@@ -22,6 +22,11 @@ prompt: |
     - ❌ `templateId`、`toUserIds`、`reportId`、`maxResults`
   - 数组类参数：逗号分隔的用字符串（"id1,id2"），标明 JSON 的用 JSON 字符串
 
+  ## 已知隐式 required（dws help 漏标，必传——见 ADR-004）
+
+  - `dingtalk.chat.message.send-by-bot`：必传 `robot-code` + `title`（先 `dingtalk.chat.bot.search` 找一个 robot）
+  - `dingtalk.oa.approval.list-initiated`：必传 `process-code`（先 `dingtalk.oa.approval.list-forms` 拿表单）
+
   ## 执行步骤
 
   1. **拉取今日素材**
