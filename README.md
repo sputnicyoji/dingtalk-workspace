@@ -4,6 +4,8 @@
 
 **仓库名容易误导**：T1 核心是 host-agnostic 的协议适配器，Claude Desktop / Cursor / Codex / Hermes 都能直接用；Hermes 只是 T2 加分包的宿主。
 
+**进度与差异化**：[`docs/ROADMAP.md`](docs/ROADMAP.md) · [`docs/COMPARISON.md`](docs/COMPARISON.md)
+
 ---
 
 ## 一句话差异化
@@ -50,7 +52,8 @@ T1: packages/dingtalk-workspace-mcp/   (v0, 核心)
 
 ## 状态
 
-**v0 开发中**。当前：架构冻结，准备启动 T1 实现。
+**T1 已发布**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（npm）
+**项目里程碑**：v0 已闭环，v0.1 进行中（收尾阶段），v0.2（ext-stateful-watch）MVP 代码完成待观察。
 
 | 进度 | 产物 |
 |------|------|
@@ -58,8 +61,9 @@ T1: packages/dingtalk-workspace-mcp/   (v0, 核心)
 | ✅ 版本节奏确定 | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 | ✅ Hermes 集成方案成文 | [`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md) |
 | ✅ T1 参数序列化实测 | [`docs/decisions/001-param-serialization.md`](docs/decisions/001-param-serialization.md) |
-| ⏳ `packages/dingtalk-workspace-mcp/` 实现 | — |
-| ⏳ 差异化对比稿 | `docs/COMPARISON.md`（v0.1 交付） |
+| ✅ `packages/dingtalk-workspace-mcp/` 实现并发布 | [`packages/dingtalk-workspace-mcp/`](packages/dingtalk-workspace-mcp/) |
+| ✅ 差异化对比文档 | [`docs/COMPARISON.md`](docs/COMPARISON.md) |
+| 🟡 v0.1 收尾事项 | README 首屏链接、模板补齐、1 周稳定性观察与 milestone tag |
 
 ---
 
