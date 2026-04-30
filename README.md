@@ -1,7 +1,7 @@
 # dingtalk-workspace-mcp
 
-> A dws-driven, dynamically full-coverage DingTalk MCP server for any MCP host.
-> 一个 dws-driven、动态全覆盖的钉钉 MCP server，对所有 MCP host 通用。
+> A protocol bridge that turns DingTalk's official dws CLI into a host-agnostic MCP server.
+> 把钉钉官方 dws CLI 转成任意 MCP host 可用的通用 MCP server。
 
 [English](#english) · [简体中文](#简体中文) · [Roadmap](docs/ROADMAP.md) · [Comparison](docs/COMPARISON.md)
 
@@ -11,17 +11,23 @@
 
 ### One-line differentiation
 
-Not another hand-written DingTalk MCP that fixes a 20-tool subset. On startup the server walks the [dingtalk-workspace-cli (dws)](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) `--help` tree and translates the **entire product surface** into MCP tools. When dws ships a new product or capability, restart the server — **zero code change required**.
+DingTalk already ships [dingtalk-workspace-cli (dws)](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) as the official capability engine. This project does not replace it. It turns dws into a generic MCP server: on startup it walks the `dws --help` tree and translates the **entire dws command surface** into MCP tools. When dws ships a new product or capability, restart the server -- **zero code change required**.
 
-| Dimension | Existing DingTalk MCPs (5+) | This project |
-|-----------|----------------------------|--------------|
-| Coverage | Hand-written subset | Auto-syncs full dws surface |
-| Response to dws upgrades | Maintainer adds tools manually | Restart and you're done |
-| Business logic | Often baked into tools | Pure protocol adaptation, zero assumptions |
-| Auth | Each implements its own | Fully delegated to dws (officially maintained) |
-| Hosts validated | Usually only the author's | Claude Desktop / Cursor / Codex / any MCP host |
+| Dimension | dws CLI | This project |
+|-----------|---------|--------------|
+| Role | Official DingTalk capability engine | MCP protocol adapter for dws |
+| Interface | Terminal commands and JSON stdout | MCP `tools/list` + `tools/call` |
+| Consumers | Humans, scripts, CLI-compatible agents | Claude Desktop / Cursor / Codex / any MCP host |
+| Auth | OAuth, token storage, permissions, audit | Fully delegated to dws |
+| Coverage | Full official dws product surface | Auto-syncs the discovered dws surface |
+| Upgrade path | dws adds commands | Restart and expose them through MCP |
+| Business logic | Official product behavior | Pure protocol adaptation, zero assumptions |
 
-**Moat**: DingTalk officially commits to a "CLI + MCP marketplace" path and will not ship a first-party MCP server. This project's positioning is not at risk of being absorbed by an official offering.
+**Moat**: DingTalk's strategy is the official dws CLI plus a broader MCP ecosystem, not a single universal first-party MCP server that replaces third-party adapters. This project stays ecosystem-neutral: one dws-driven adapter, any MCP host, no host-specific glue code.
+
+### Why this exists
+
+Direct `dws ...` calls work for terminals and scripts. MCP hosts need something different: tool discovery, structured arguments, standard errors, permission boundaries, and a way to avoid arbitrary shell access. This server provides that layer without taking over DingTalk identity, permissions, or business semantics.
 
 ### Architecture
 
@@ -47,11 +53,11 @@ packages/dingtalk-workspace-mcp/
 - **Zero business assumptions** — no product-specific parsers, no embedded report templates, no alert rules
 - **Zero host assumptions** — no host-specific branches anywhere in the code path
 
-Identity, permissions, and tokens are entirely owned by dws. This project is purely a `CLI ↔ MCP` protocol adapter.
+Identity, permissions, and tokens are entirely owned by dws. This project is purely a `CLI <-> MCP` protocol adapter.
 
 ### Status
 
-**Published**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.4` on npm.
+**Published**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.5` on npm.
 
 | Progress | Artifact |
 |----------|----------|
@@ -108,17 +114,23 @@ No tokens. No environment variables. No secrets to configure. Everything is dele
 
 ### 一句话差异化
 
-不是再写一个手写固定 tool 子集的 DingTalk MCP。本项目启动时遍历 [`dws --help`](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) 树，把钉钉**整棵产品树**动态翻译成 MCP tools——dws 升级新增能力，重启一次 MCP server 即生效，**零代码维护**。
+钉钉已经有官方能力底座：[dingtalk-workspace-cli (dws)](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli)。本项目不替代 dws，只把 dws 转成通用 MCP server：启动时遍历 `dws --help` 树，把 **dws 整个命令面**动态翻译成 MCP tools。dws 升级新增能力，重启一次 MCP server 即生效，**零代码维护**。
 
-| 维度 | 现存 DingTalk MCP（5+ 个） | 本项目 |
-|------|----------------------------|--------|
-| 覆盖范围 | 手写固定子集 | dws 全产品自动同步 |
-| dws 升级响应 | 维护者手动补 tool | 重启即见，零改动 |
-| 业务逻辑 | 常混在 tool 里 | 纯协议适配，零业务假设 |
-| 认证管理 | 各自实现 | 完全复用 dws（官方维护） |
-| 适用 host | 通常只验证过自家 | Claude Desktop / Cursor / Codex / 任意 MCP host |
+| 维度 | dws CLI | 本项目 |
+|------|---------|--------|
+| 角色 | 钉钉官方能力引擎 | dws 的 MCP 协议适配层 |
+| 接口 | 终端命令和 JSON stdout | MCP `tools/list` + `tools/call` |
+| 使用者 | 人、脚本、CLI-compatible agents | Claude Desktop / Cursor / Codex / 任意 MCP host |
+| 认证管理 | OAuth、token、权限、审计 | 完全委托给 dws |
+| 覆盖范围 | 官方 dws 产品能力面 | 自动同步探测到的 dws 能力面 |
+| dws 升级响应 | dws 新增命令 | 重启后通过 MCP 暴露 |
+| 业务逻辑 | 官方产品行为 | 纯协议适配，零业务假设 |
 
-**护城河**：钉钉官方明确走「CLI + MCP 广场」路径，不会出官方 MCP server。本项目的定位长期不会被官方覆盖归零。
+**护城河**：钉钉的策略是官方 dws CLI 加 MCP 生态，而不是用一个官方全覆盖 MCP server 替代第三方适配器。本项目保持生态中立：一个 dws-driven adapter，任意 MCP host 可接，不写 host 专用胶水。
+
+### 为什么需要这一层
+
+直接调用 `dws ...` 适合终端和脚本。MCP host 需要的是另一层：工具发现、结构化参数、标准错误、权限边界，以及避免开放任意 shell 的能力。本项目只提供这层，不接管钉钉身份、权限和业务语义。
 
 ### 架构
 
@@ -144,11 +156,11 @@ packages/dingtalk-workspace-mcp/
 - **零业务假设**：不解析"哪个产品"、不内嵌报告模板、不做告警规则
 - **零 host 假设**：代码路径里不出现 `if <某个 host>` 分支
 
-身份 / 权限 / token 全部由 dws 承担，本项目只做 `CLI ↔ MCP` 的无状态翻译。
+身份 / 权限 / token 全部由 dws 承担，本项目只做 `CLI <-> MCP` 的无状态翻译。
 
 ### 状态
 
-**已发布**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（npm）
+**已发布**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.5`（npm）
 
 | 进度 | 产物 |
 |------|------|
