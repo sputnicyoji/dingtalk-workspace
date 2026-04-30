@@ -28,16 +28,23 @@ jobs:
           cache: npm
           cache-dependency-path: packages/dingtalk-workspace-mcp/package-lock.json
 
-      - run: npm ci
+      - name: Install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Tests + coverage gate
-        run: npx vitest run --coverage
+        run: npm run test:coverage
+
+      - name: Dependency audit
+        run: npm run audit
 
       - name: Build
         run: npm run build
+
+      - name: Verify npm package contents
+        run: npm run pack:check
