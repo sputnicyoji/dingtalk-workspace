@@ -11,24 +11,9 @@
 
 ---
 
-## Quick start
+## 📦 Install — npm package `@sputnicyoji/dingtalk-workspace-mcp`
 
-The package is published on npm as **`@sputnicyoji/dingtalk-workspace-mcp`** and is meant to be invoked through `npx` by your MCP host — no global install needed.
-
-**1. Install the `dws` CLI** (one-time, on your machine):
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.sh | sh
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.ps1 | iex
-
-# then authenticate
-dws auth login
-```
-
-**2. Wire the MCP server into your host** (`mcp.json` or equivalent — Claude Desktop / Cursor / Codex / any MCP host):
+Add the following block to your MCP host config (`mcp.json` or equivalent — works with Claude Desktop / Cursor / Codex / any MCP host):
 
 ```json
 {
@@ -41,7 +26,10 @@ dws auth login
 }
 ```
 
-YAML-config hosts use the same shape:
+That's the entire install. No `npm install -g`, no clone, no build — `npx` pulls the package on first run. Restart the host and ~80 `dingtalk.*` tools appear automatically.
+
+<details>
+<summary>YAML-config hosts (same shape under their own key)</summary>
 
 ```yaml
 mcp_servers:
@@ -51,20 +39,33 @@ mcp_servers:
     timeout: 180
 ```
 
-Restart the host. ~80 `dingtalk.*` tools appear automatically.
-
-> [!NOTE]
-> No tokens, no env vars, no secrets. Identity, permissions and token refresh are entirely delegated to `dws`.
+</details>
 
 > [!TIP]
-> Prefer pinning a version in production: `"@sputnicyoji/dingtalk-workspace-mcp@0.0.5"`.
+> Pin a version in production: `"@sputnicyoji/dingtalk-workspace-mcp@0.0.5"`.
+
+> [!NOTE]
+> No tokens, no env vars, no secrets in the host config. Identity, permissions and token refresh are entirely delegated to the `dws` CLI — see [Prerequisites](#prerequisites) below.
 
 ### Prerequisites
+
+The MCP server is a thin protocol adapter; the heavy lifting happens in `dws`, which you install **once on your machine**:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.sh | sh
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.ps1 | iex
+
+# then authenticate (one-time browser OAuth)
+dws auth login
+```
 
 | Dependency | Purpose |
 |------------|---------|
 | [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | Official DingTalk capability engine, must be on `PATH` |
-| Node.js ≥ 20 | Runtime for the MCP server |
+| Node.js ≥ 20 | Runtime for the MCP server (auto-pulled by `npx`) |
 | `dws auth login` completed | Reuses dws auth & token management |
 
 ### CLI flags
