@@ -11,9 +11,23 @@
 
 ---
 
-## 📦 Install — npm package `@sputnicyoji/dingtalk-workspace-mcp`
+## 📦 Install
 
-Add the following block to your MCP host config (`mcp.json` or equivalent — works with Claude Desktop / Cursor / Codex / any MCP host):
+> There is **only one** way to install this package — via `npx`, invoked by your MCP host. Everything else on this page is either an alternative form of the same command or a separate upstream dependency.
+
+**npm package**: [`@sputnicyoji/dingtalk-workspace-mcp`](https://www.npmjs.com/package/@sputnicyoji/dingtalk-workspace-mcp)
+
+### One-liner — verify the package can be pulled
+
+```bash
+npx -y @sputnicyoji/dingtalk-workspace-mcp --version
+```
+
+Copy, paste, run. If it prints a version number, npm and Node are working and the package is reachable. (You'll see a `dws not found` error on first run if `dws` isn't installed yet — that's fine; see [Prerequisites](#prerequisites).)
+
+### Wire it into your MCP host
+
+Paste this block into `mcp.json` (or your host's equivalent — Claude Desktop, Cursor, Codex, any MCP host):
 
 ```json
 {
@@ -26,7 +40,7 @@ Add the following block to your MCP host config (`mcp.json` or equivalent — wo
 }
 ```
 
-That's the entire install. No `npm install -g`, no clone, no build — `npx` pulls the package on first run. Restart the host and ~80 `dingtalk.*` tools appear automatically.
+Restart the host. ~80 `dingtalk.*` tools appear automatically. **No `npm install -g`, no clone, no build** — `npx` pulls the package on first run and caches it.
 
 <details>
 <summary>YAML-config hosts (same shape under their own key)</summary>
@@ -41,15 +55,29 @@ mcp_servers:
 
 </details>
 
-> [!TIP]
-> Pin a version in production: `"@sputnicyoji/dingtalk-workspace-mcp@0.0.5"`.
+<details>
+<summary>Pinning a version (recommended for production)</summary>
+
+```json
+"args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp@0.0.5"]
+```
+
+</details>
 
 > [!NOTE]
-> No tokens, no env vars, no secrets in the host config. Identity, permissions and token refresh are entirely delegated to the `dws` CLI — see [Prerequisites](#prerequisites) below.
+> No tokens, no env vars, no secrets in the host config. Identity, permissions and token refresh are entirely delegated to the `dws` CLI.
 
 ### Prerequisites
 
-The MCP server is a thin protocol adapter; the heavy lifting happens in `dws`, which you install **once on your machine**:
+These are **separate from installing this package** — they are the upstream tools the package needs at runtime.
+
+| Dependency | Required? | Purpose |
+|------------|-----------|---------|
+| [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | Yes, on `PATH` | Official DingTalk capability engine — does the actual work |
+| Node.js ≥ 20 | Yes | Runtime for `npx` and the MCP server |
+| `dws auth login` completed | Yes (once) | Reuses dws auth & token management |
+
+Install `dws` once per machine:
 
 ```bash
 # macOS / Linux
@@ -61,12 +89,6 @@ irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/ma
 # then authenticate (one-time browser OAuth)
 dws auth login
 ```
-
-| Dependency | Purpose |
-|------------|---------|
-| [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | Official DingTalk capability engine, must be on `PATH` |
-| Node.js ≥ 20 | Runtime for the MCP server (auto-pulled by `npx`) |
-| `dws auth login` completed | Reuses dws auth & token management |
 
 ### CLI flags
 
@@ -170,9 +192,23 @@ packages/dingtalk-workspace-mcp/
 
 ## 简体中文
 
-### 📦 安装 — npm 包 `@sputnicyoji/dingtalk-workspace-mcp`
+### 📦 安装
 
-把以下配置加到 MCP host 的 `mcp.json`（Claude Desktop / Cursor / Codex 等等都用同一份）：
+> 本包**只有一种**安装方式——通过 MCP host 调起的 `npx`。这一节里其他代码块要么是同一条命令的不同形态，要么是上游依赖的安装命令，**不是替代方案**。
+
+**npm 包名**：[`@sputnicyoji/dingtalk-workspace-mcp`](https://www.npmjs.com/package/@sputnicyoji/dingtalk-workspace-mcp)
+
+#### 一行命令验证拉得到包
+
+```bash
+npx -y @sputnicyoji/dingtalk-workspace-mcp --version
+```
+
+复制粘贴运行。能打印版本号就说明 npm 和 Node 都正常、包能拉到。（如果还没装 `dws`，首次运行会报 `dws not found`，正常，看下面[前置依赖](#前置依赖)。）
+
+#### 接入 MCP host
+
+把以下配置贴到 `mcp.json`（Claude Desktop / Cursor / Codex 等等都用这同一份）：
 
 ```json
 {
@@ -185,7 +221,7 @@ packages/dingtalk-workspace-mcp/
 }
 ```
 
-完事。不用 `npm install -g`、不用克隆、不用编译——`npx` 首次运行时会自动拉包。重启 host 后约 80 个 `dingtalk.*` tool 自动出现。
+重启 host 后约 80 个 `dingtalk.*` tool 自动出现。**不用 `npm install -g`、不用克隆、不用编译**——`npx` 首次运行时拉包并缓存。
 
 <details>
 <summary>使用 YAML 配置的 host（结构相同）</summary>
@@ -200,15 +236,29 @@ mcp_servers:
 
 </details>
 
-> [!TIP]
-> 生产环境建议锁版本：`"@sputnicyoji/dingtalk-workspace-mcp@0.0.5"`。
+<details>
+<summary>锁版本（生产环境推荐）</summary>
+
+```json
+"args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp@0.0.5"]
+```
+
+</details>
 
 > [!NOTE]
 > host 配置里没有 token、没有环境变量、没有任何密钥。身份、权限、token 刷新全部委托给 `dws` CLI。
 
 #### 前置依赖
 
-MCP server 是薄薄一层协议适配，真正的能力在 `dws`，**本机只装一次**：
+这些**和"安装本包"是两回事**——是本包运行时需要的上游工具。
+
+| 依赖 | 是否必需 | 用途 |
+|------|---------|------|
+| [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | 必需，且需在 `PATH` | 钉钉官方能力引擎，干实际活的就是它 |
+| Node.js ≥ 20 | 必需 | `npx` 和 MCP server 的运行时 |
+| `dws auth login` 已完成 | 必需（一次） | 复用 dws 的认证 & token 管理 |
+
+`dws` 每台机器装一次：
 
 ```bash
 # macOS / Linux
@@ -220,12 +270,6 @@ irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/ma
 # 完成 OAuth 登录（一次性浏览器授权）
 dws auth login
 ```
-
-| 依赖 | 用途 |
-|------|------|
-| [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | 钉钉官方能力引擎，须在 `PATH` |
-| Node.js ≥ 20 | MCP server 的运行时（`npx` 自动拉包） |
-| `dws auth login` 已完成 | 复用 dws 的认证 & token 管理 |
 
 ### 为什么需要这一层
 
