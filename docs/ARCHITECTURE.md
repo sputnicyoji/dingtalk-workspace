@@ -1,7 +1,7 @@
 # dingtalk-workspace-mcp 架构文档
 
 **版本**：1.0（2026-04-30 简化——砍掉 T1/T2 双轨，纯 dws-driven MCP）
-**状态**：架构冻结，主包稳定迭代
+**状态**：架构冻结；主包 v0.1 收尾中（详见 `ROADMAP.md`）
 
 ---
 
@@ -245,7 +245,7 @@ dws 升级改 schema 输出格式 → 主包炸。缓解：
 - `ext-stateful-watch`：3 个 watcher（approvals / reports / todos）+ 64 个测试
 - `ext-cron-templates`：daily_brief.yaml prompt 模板骨架
 
-**为什么砍**：T2 的存在天然破坏 host-agnostic 红线——ext 用 Hermes 独家 API 写的告警规则，只对 Hermes 用户有价值，对其他 90% 用户是噪音。继续维护意味着仓库需要两条产品线、两套测试、两套发布——投入产出比远低于把精力集中在主包通用性。
+**为什么砍**：host 专属扩展破坏本项目的 host-agnostic 红线（论证见 §1.4 路径 C）。一旦接受双轨，仓库需要两条产品线、两套测试、两套发布——选择把精力集中到主包通用性。
 
 **封档**：git tag `milestone-v0.2`。代码原样保留作参考，不再迭代、不发包、不进路线图。
 

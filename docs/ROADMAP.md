@@ -9,7 +9,7 @@
 
 **npm 包**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（已发布）
 **Git tag**：v0.0.1 / v0.0.2 / v0.0.4 / `milestone-v0.2`（legacy 封档）
-**Host 集成**：Claude Code + Hermes 双栈通过全局 bin 共用，端到端 82 tools 可调
+**Host 集成**：Claude Code 与 Hermes 均已接入验证，通过全局 bin 共用，端到端 82 tools 可调
 **项目 milestone**：**v0 已闭环**，**v0.1 进行中**（70% 完成）
 
 ---
@@ -45,7 +45,7 @@
 - ✅ Hermes + Claude Code 各自接入，82 tools 可调用，真实 API call 成功
 - ✅ `dws aitable record query` 嵌套 `filter` 参数序列化（ADR-001 §D2 json_object 路径）
 - ✅ auth 未完成时降级 bootstrap-only（schema-loader.ts loadAll）
-- ✅ 84/84 Vitest 测试通过
+- ✅ 86/86 Vitest 测试通过
 
 ---
 
@@ -77,7 +77,7 @@
 
 **原计划**：交付 `ext-stateful-watch`（Hermes 专属跨周期状态告警）。
 
-**实际**：MVP 代码完成（64 测试通过、live spot-check 验证），但战略评审后**砍掉双轨设计**——主项目专注 host-agnostic 通用性，Hermes 专属扩展不再是产品线一部分。
+**实际**：MVP 代码完成（64 测试通过、live spot-check 验证），但战略评审后**砍掉双轨设计**——主包专注 host-agnostic 通用性，Hermes 专属扩展不再是产品线一部分。
 
 **封档**：
 - 代码归档至 `legacy/hermes-extensions/`（含 `ext-stateful-watch` + `ext-cron-templates` 骨架）

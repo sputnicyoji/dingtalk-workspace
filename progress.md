@@ -23,7 +23,7 @@
 - [x] 包名 `@sputnicyoji/*`
 - [x] **v0.0.2** cobra 布尔 flag 修复 + `--version` 动态读包
 - [x] **v0.0.4** 全角（必填）parser 识别（attendance.summary 等 29 工具受益）
-- [x] 84/84 测试通过，tsc 清，含 6 条端到端回归用例
+- [x] 86/86 测试通过，tsc 清，含 6 条端到端回归用例
 - [x] Windows `npx` spawn 问题绕开：直接指向全局 bin
 - [x] Hermes + Claude Code 双 host 端到端验证：82 tools 全部加载
 
@@ -69,7 +69,7 @@
 
 ### 为什么砍
 
-T2 的存在天然破坏 host-agnostic 红线——ext 用 Hermes 独家 API 写的告警规则，只对 Hermes 用户有价值。继续维护意味着两条产品线、两套测试、两套发布——投入产出比远低于把精力集中在主包通用性。详见 `docs/ARCHITECTURE.md` §6。
+详见 `docs/ARCHITECTURE.md` §6（host 专属扩展破坏 host-agnostic 红线）。
 
 ## 已知问题（环境层，不在主包责任域）
 
