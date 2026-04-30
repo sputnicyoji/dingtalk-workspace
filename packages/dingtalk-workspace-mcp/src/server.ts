@@ -130,7 +130,7 @@ function registerBootstrapTool(server: McpServer, probe: DwsProbeResult): void {
         lines.push('');
         lines.push('Next step: open a terminal and run:');
         lines.push('  dws auth login');
-        lines.push('Then restart your MCP host (Hermes / Claude Desktop / etc).');
+        lines.push('Then restart your MCP host (Claude Desktop / Cursor / Codex / etc).');
       }
       return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
     }

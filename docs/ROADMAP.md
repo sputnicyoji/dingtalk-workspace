@@ -1,33 +1,34 @@
-# Hermes-DingTalk Roadmap
+# dingtalk-workspace-mcp Roadmap
 
-**最后更新**：2026-04-14
-**节奏原则**：每版交付一个独立可用增量，不预先构建上层让下层半成品堆积。任何版本超期 50% → 砍范围，不延期。
+**最后更新**：2026-04-30（重写——砍掉 T2 ext 计划，纯主包路线图）
+**节奏原则**：每版交付一个独立可用增量。任何版本超期 50% → 砍范围，不延期。
 
 ---
 
 ## 当前状态
 
 **npm 包**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（已发布）
-**Git tag**：v0.0.1 / v0.0.2 / v0.0.4
-**Host 集成**：Hermes（D:\Hermes_Agent\）+ Claude Code 双栈通过全局 bin 共用，端到端 82 tools 可调
+**Git tag**：v0.0.1 / v0.0.2 / v0.0.4 / `milestone-v0.2`（legacy 封档）
+**Host 集成**：Claude Code + Hermes 双栈通过全局 bin 共用，端到端 82 tools 可调
 **项目 milestone**：**v0 已闭环**，**v0.1 进行中**（70% 完成）
 
 ---
 
 ## 版本号约定
 
-两层版本，不要混淆：
+只有一层 SemVer：`@sputnicyoji/dingtalk-workspace-mcp@x.y.z`
 
-| 维度 | 含义 | 步进规则 |
-|------|------|---------|
-| **npm 包版本** `@sputnicyoji/dingtalk-workspace-mcp@x.y.z` | T1 单独的 SemVer | patch=parser bug fix；minor=新解析能力或 schema 输出变化；major=MCP 协议不兼容或 dws 最低版本大升级 |
-| **项目 milestone** `v0 / v0.1 / v0.2 / ...` | 整个 repo 的阶段（含 T1 + T2 modules） | 每完成一个 milestone tag `milestone-vX.Y` |
+| 步进 | 含义 |
+|------|------|
+| patch | parser bug fix |
+| minor | 新解析能力或 schema 输出变化 |
+| major | MCP 协议不兼容 或 dws 最低版本大升级 |
 
-T1 npm 版本独立步进（v0.0.4 当前），不被 milestone 绑死——milestone 推进时 T1 可能多次小升级。
+项目 milestone（v0 / v0.1 / v0.2 ...）是阶段标签，不绑定 npm 版本。
 
 ---
 
-## v0 — T1 MCP Server 首发 ✅ DONE
+## v0 — MCP Server 首发 ✅ DONE
 
 **目标**：任何 MCP host 加 4 行配置即可调用 dws 全部能力。
 
@@ -36,7 +37,7 @@ T1 npm 版本独立步进（v0.0.4 当前），不被 milestone 绑死——mile
 - ✅ help-tree 动态 schema 生成（ADR-002 下线 schema-json 路径）
 - ✅ dispatch 层（args → CLI flags，json_array / json_object / array 语义提升 + ADR-001）
 - ✅ 错误归一化：`NOT_INSTALLED` / `VERSION_TOO_OLD` / `AUTH_EXPIRED` / `TIMEOUT` / `NON_ZERO_EXIT`
-- ✅ GitHub Actions CI + npm publish workflow（CI 暂走手动绕开私有仓库账单）
+- ✅ GitHub Actions CI + npm publish workflow
 - ✅ Hermes / Claude Code 双 host 接入文档
 
 **退出标准对照**：
@@ -44,124 +45,90 @@ T1 npm 版本独立步进（v0.0.4 当前），不被 milestone 绑死——mile
 - ✅ Hermes + Claude Code 各自接入，82 tools 可调用，真实 API call 成功
 - ✅ `dws aitable record query` 嵌套 `filter` 参数序列化（ADR-001 §D2 json_object 路径）
 - ✅ auth 未完成时降级 bootstrap-only（schema-loader.ts loadAll）
-- ✅ 84/84 Vitest 测试通过（覆盖 schema-loader / dispatch / dws-probe / errors）
+- ✅ 84/84 Vitest 测试通过
 
 ---
 
-## v0.1 — T1 稳健化 + 差异化叙事 + ext-cron-templates 🟡 70%
+## v0.1 — 稳健化 + 差异化叙事 🟡 70%
 
-**目标**：让"为什么选我们而不是其他 6 个 DingTalk MCP"有据可查；同时给 Hermes 用户一份开箱即用的 cron prompt 包。
+**目标**：让"为什么选我们而不是其他 6 个 DingTalk MCP"有据可查。
 
 **已交付**：
-- ✅ T1 bug 修复：v0.0.2 cobra 布尔 flag、v0.0.4 全角（必填）识别
+- ✅ bug 修复：v0.0.2 cobra 布尔 flag、v0.0.4 全角（必填）识别
 - ✅ `docs/COMPARISON.md`：6 个现存项目对比矩阵 + 两个分水岭维度 + 按场景推荐
 - ✅ ADR-003：`report.create` 契约（key=field_name + 字段规约）
-- ✅ ADR-004：dws 隐式 required flag 清单（B+C 路径，T1 不动 src）
+- ✅ ADR-004：dws 隐式 required flag 清单
 - ✅ 上游 dws issue #106 + #107 已上报
-- ✅ `hermes-extensions/ext-cron-templates/` 骨架（README + 准入原则 + daily_brief.yaml v0.1-draft）
 
 **剩余范围**：
-- [ ] T1 连续运行 1 周无崩溃验证
-- [ ] README 首屏置顶链接 COMPARISON.md
-- [ ] **再做 2-4 份 cron 模板**（候选：`weekly_report` / `monthly_summary` / `overdue_todos` / `attendance_digest`）——`daily_brief` 已是模板范式
-- [ ] **install.sh 形态决策**：等 Hermes `cronjob` CLI 入口稳定后决定走"拷贝模板目录"还是"生成 `hermes cronjob create` 命令脚本"（详见 ARCHITECTURE §4.4 未决分支）
+- [ ] 主包连续运行 1 周无崩溃验证
+- [ ] README 首屏置顶链接 COMPARISON.md（已完成基本结构，需复核首屏可见性）
 - [ ] milestone tag `milestone-v0.1`
 
 **退出标准**：
-- [ ] T1 连续运行 1 周无崩溃
+- [ ] 连续运行 1 周无崩溃
 - [ ] COMPARISON.md 在 README 首屏置顶链接
-- [ ] 至少 1 份 cron 模板在 Yoji 自己的 Hermes 上跑通 5 个工作日
 
-**不做**：写 polling 代码、状态持久化、告警去重（→ v0.2）。
-
----
-
-## v0.2 — ext-stateful-watch 🟡 MVP 代码完成，待观察
-
-**目标**：补齐 Hermes cron 唯一缺失的能力——跨周期状态去重。
-
-**范围调整**（Task 1 probe 后）：`@mention watcher` 砍掉（dws CLI 无 `chat message list` 原语），改为 3 个 watcher：
-- `watch_approvals` — `dws oa approval list-pending` 超时 + `list-initiated` 状态机
-- `watch_reports` — `dws report list` 新到达 delta
-- `watch_todos` — `dws todo task list` 停滞超 N 天阶段机（基于 createdTime，dueTime 在观测数据中全为 null）
-
-**已完成**：
-- [x] 单 ext 打包 `hermes-extensions/ext-stateful-watch/`（lib + scripts + templates + install.sh）
-- [x] 64 个测试全绿（unit + e2e with injected fake runner），<0.2s
-- [x] Live spot-check：watch_todos 触发 8 条 first_alert，第二次 silent；watch_reports 触发 8 条日报 delta，第二次 silent；watch_approvals 当前 pending 为空 → silent + 空 snapshot 正常
-- [x] ADR-005 状态 schema（JSONL per watcher，不用 SQLite）
-- [x] install.sh 支持 `HERMES_HOME` override，dry-install 通过
-- [x] Cron prompt 模板 3 份（triage 规则内嵌）
-
-**退出标准**（尚待）：
-- [ ] 启用 `watch_todos` 作首个 cron（最低风险），观察 7 天：state 增长合理、stage 转换正确、无误报
-- [ ] 真实 pending 审批到达时 patch `watch_approvals` normalization（当前用 fabricated item shape；fixtures/approval_list_pending.json 为空）
-- [ ] `config.approvals.initiated_process_codes` 按实际使用的审批表填充
-
-**不做**：UI、多租户、外发渠道（非钉钉）。
+**不做**：业务逻辑、host 专属优化、polling 代码。
 
 ---
 
-## v0.3 — ext-long-content ⏳ 未启动
+## v0.2 — legacy 封档 ✅ ARCHIVED
 
-**目标**：把"长会议/长文档 → 结构化纪要 + 待办分发"流水线化，发挥 Hermes delegate + trajectory_compressor 的独家能力。
+**原计划**：交付 `ext-stateful-watch`（Hermes 专属跨周期状态告警）。
 
-**范围**：
-- `hermes-extensions/ext-long-content/`
-- Hermes skill：`meeting_followup.md`
-- pipeline.py：delegate 编排辅助（拉闪记 → 分段 delegate → 合并 → 拆待办 → 分发）
-- 用户唤起：on-demand（v0.3 不做事件触发）
+**实际**：MVP 代码完成（64 测试通过、live spot-check 验证），但战略评审后**砍掉双轨设计**——主项目专注 host-agnostic 通用性，Hermes 专属扩展不再是产品线一部分。
+
+**封档**：
+- 代码归档至 `legacy/hermes-extensions/`（含 `ext-stateful-watch` + `ext-cron-templates` 骨架）
+- git tag `milestone-v0.2` 锁定封档点
+- 不发 npm 包、不进后续路线图、不再迭代
+
+详见 `docs/ARCHITECTURE.md` §6。
+
+---
+
+## v0.3 — 主包持续打磨 ⏳ 规划中
+
+**目标**：在 v0.1 稳定运行基础上，把主包做到"长期低维护"。
+
+**候选范围**（按 dws 升级与用户反馈优先级排序）：
+
+- [ ] dws schema 输出富化：从 dws example 字段抽取 `inputSchema.examples`，让 LLM 一眼看到正确 payload 结构
+- [ ] tool 描述质量提升：cobra help 顶部 1-2 行往往不够，考虑追加 flags 段语义说明
+- [ ] 启动期 schema 缓存：进程间复用，避免每次 npx 冷启动重跑 help-tree（10-30s → <1s）
+- [ ] Windows `npx` spawn 体验改善：当前需绕开走全局 bin，目标做到默认 `npx` 即用
+- [ ] 上游 dws #106 / #107 修好后，下线 ADR-003 / ADR-004 部分清单
 
 **前置工作**：
-- [ ] 调研 Hermes `delegate_tool` / `trajectory_compressor` 内部 API（`D:\Hermes_Agent`）
-- [ ] 准入复核：写一份"为什么 T1 + Hermes 原生 prompt 做不到"的反面论证
+- v0.1 稳定 1 周
+- 收集至少 3 个外部用户反馈
 
 **退出标准**：
-- [ ] 拿一份真实会议（>1h）跑通：纪要可读、待办拆分准确率 > 70%、@ 人正确
-- [ ] 失败优雅降级（delegate 子 agent 挂掉 → 部分纪要 + 错误说明）
-
-**不做**：自动会议监听、组织耦合定制。
+- 主包月均 npm 下载 ≥ 50（粗略 traction 指标）
+- 至少处理 3 类用户反馈
 
 ---
 
-## v0.4 — T1 长期演进 + 现有 ext 调优
+## v0.4 — dws schema v2 兼容（按需启动）
 
-**触发条件**（按需启动，不固定时长）：
-- dws 出大版本，schema 格式变化
-- 已发 ext 收集到 ≥ 3 类用户反馈
-- 上游 dws #106 / #107 修好后，可下线 ADR-003 / ADR-004 部分清单
+**触发条件**：dws 出大版本，schema 格式变化。
 
-**范围（候选）**：
-- T1 schema 解析对 dws v2 schema 的兼容
-- ADR-003 / ADR-004 清单收敛（dws help 修了 → 我们对应行删除）
-- ext-stateful-watch 阈值 tuning + 新 category 支持
+**范围**：
+- 主包 schema 解析对 dws v2 schema 的兼容
+- 旧版本降级路径
 
----
-
-## v0.5+ — 新 ext 立项（按真实需求驱动）
-
-候选清单（**非承诺**，按真实痛感排序）：
-
-| 候选 | 依赖 Hermes 独家能力 | 真实痛感验证 |
-|------|-------------------|-------------|
-| ext-meeting-prep（会议前 10 分钟自动备资料） | cron 状态 + delegate | 待自用验证 |
-| ext-decision-log（决策日志写 AITable） | memory_tool + Honcho | 待自用验证 |
-| ext-org-coord（跨组协调多步追踪） | delegate + 长跨度状态 | 待，依赖身份解析 |
-
-**立项规则**：
-1. 自己用 T1 + Hermes 原生组合先撑 1 个月
-2. 痛感够强 → 走 brainstorming 重新评估 ROI 四象限 + 三否决线
-3. 通过 → 进 ROADMAP
+不预先开工。dws 上游动作触发本版本。
 
 ---
 
 ## v1.0 — 何时算 "1.0"？
 
 **判据（必须全部成立）**：
-- T1 在 npm 上 ≥ 6 个月，月均下载 > 100
-- 至少 2 个 ext 在 Yoji 之外的真实用户那里运行 ≥ 1 个月
+- 主包在 npm 上 ≥ 6 个月，月均下载 > 100
+- 至少 5 个外部用户在 Yoji 之外的真实环境运行 ≥ 1 个月
 - COMPARISON.md 中所有"独家"差异点经第三方验证
-- 文档完整度：每个 module 有 README + 至少 1 个端到端示例
+- 文档完整度：每个核心模块有 README + 至少 1 个端到端示例
 - 上游 dws #106 / #107 至少有 1 个被 fix（证明上游协作链路通）
 
 **1.0 之前**：保持 0.x 节奏，破坏性变更随时可加（minor bump）。
@@ -173,18 +140,14 @@ T1 npm 版本独立步进（v0.0.4 当前），不被 milestone 绑死——mile
 - **每个版本结束必须 ship**（npm publish / git tag）
 - 下一版本开工前，当前版本需连续运行 ≥ 1 周无人工干预
 - 任何版本超期 50% → 砍范围，不延期
-- 任何新想法默认进 `v0.5+ 候选清单` 或单开 `ideas.md`，不中插当前版本
-- **T1 修改不引入业务逻辑**（铁律，详见 ARCHITECTURE §1.4）
+- 任何新想法默认进 `ideas.md`，不中插当前版本
+- **主包不引入业务逻辑、不引入 host 假设**（铁律，详见 ARCHITECTURE §1.4）
 
 ---
 
-## 下一步行动（v0.1 收尾）
+## 不再做的事
 
-按重要性排序：
-
-1. **再做 2-4 份 cron 模板** ——`daily_brief` 范式已立，复用容易
-2. **README 首屏置顶 COMPARISON 链接**（一次 commit）
-3. **真实运行 1 周观察期** —— 这期间不动 T1 src/，只观察、记录
-4. v0.1 退出时 git tag `milestone-v0.1` 并复盘
-
-期间 T2 v0.2 设计可以并行（不阻塞 v0.1 验证期）。
+- **host 专属扩展**（任何形式）：早期 `hermes-extensions/` 已归档至 `legacy/`，不再扩展。如有特定 host 集成需求，走独立项目。
+- **重写 dws**：上游官方维护，不重造轮子。
+- **支持其他 IM**：飞书 / Slack / Teams / 微信都不在范围内。
+- **token 管理 / OAuth UI**：全部委托 dws。

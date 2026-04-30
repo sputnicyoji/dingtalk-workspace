@@ -1,4 +1,8 @@
-# Hermes 集成分析
+# Hermes 集成分析（已归档）
+
+> **本文档已归档**。2026-04-30 项目战略调整后，Hermes 专属扩展（原计划 T2）整体砍掉，相关代码归至 `legacy/hermes-extensions/`，封档点 git tag `milestone-v0.2`。本文档保留作为 legacy 实现的调研依据，**不再更新**。
+>
+> 主项目当前定位：纯 host-agnostic 的 dws-driven MCP server，详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 **最后更新**：2026-04-13
 **研究依据**：本机克隆 `D:\Hermes_Agent\`（NousResearch/hermes-agent main）+ 公开文档

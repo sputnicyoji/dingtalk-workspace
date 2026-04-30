@@ -1,35 +1,32 @@
-# Hermes-DingTalk 架构文档
+# dingtalk-workspace-mcp 架构文档
 
-**版本**：0.2（2026-04-13 重写——基于公开仓库调研重新定位）
-**状态**：T1 设计冻结，T2 扩展按需迭代
+**版本**：1.0（2026-04-30 简化——砍掉 T1/T2 双轨，纯 dws-driven MCP）
+**状态**：架构冻结，主包稳定迭代
 
 ---
 
-## 1. 项目定位（重写后）
+## 1. 项目定位
 
 ### 1.1 一句话定位
 
-**T1**：一个 dws-driven、动态全覆盖的钉钉 MCP server，所有 MCP host 通用。
-**T2**：一组 Hermes 专属扩展，只做 Hermes 独家能力 × 钉钉的真正交集。
+一个 dws-driven、动态全覆盖的钉钉 MCP server，所有 MCP host 通用。
 
-### 1.2 为什么是这个定位（基于调研事实）
+### 1.2 为什么是这个定位
 
-调研结论（详见 `docs/COMPARISON.md`，v0.1 交付）：
+调研结论（详见 `docs/COMPARISON.md`）：
 
 | 已存在 | 不存在 |
 |--------|-------|
 | dws CLI（钉钉官方，agent-native） | dws-driven 动态 MCP 适配器 |
 | 5+ 独立 DingTalk MCP（手写固定子集） | 全产品自动覆盖、随 dws 升级零维护 |
-| Hermes 钉钉 messaging adapter (Stream Mode) | 跨周期状态告警（Hermes cron 单次执行做不到） |
-| Hermes cron + `deliver="dingtalk"` | 长会议/文档 delegate 流水线（需 Hermes 独家能力） |
 
 **护城河**：钉钉官方走 "CLI + MCP 广场" 路径，明确不出官方 MCP server。本项目长期价值不会被官方覆盖归零。
 
 ### 1.3 三个硬指标
 
-1. **T1**：用户接入任何 MCP host 的成本 ≤ 4 行配置
-2. **T1**：dws 升级新增产品/能力，wrapper **不改一行代码**自动暴露
-3. **T2**：每个 ext 必须证明"离开 Hermes 独家能力做不出"，否则不立项
+1. 用户接入任何 MCP host 的成本 ≤ 4 行配置
+2. dws 升级新增产品/能力，wrapper **不改一行代码**自动暴露
+3. 任何代码路径里都不出现 host 假设（"如果是 Hermes 就……"）
 
 ### 1.4 为什么不走其他路径（反面论证）
 
@@ -38,44 +35,38 @@
 **路径 A：手写固定 MCP（现存 5+ 实现走的路）**
 - 覆盖不全：每家只写 20-30 个高频 tool，考勤/日报/AI 表格/审批常年缺席
 - **dws 升级即坏**：钉钉走 "CLI + MCP 广场" 路线，dws 会持续加料——手写方案本质是债务工厂
-- 每个 MCP host 都要重新接一遍（Claude Desktop / Cursor / Codex / Hermes）
+- 每个 MCP host 都要重新接一遍
 
 **路径 B：自建第一方 CLI / 直连钉钉 API**
 - 要复刻的不只是命令行，是整个 OAuth 身份域：客户端注册、token 生命周期、自动刷新、多租户、企业 corpId 隔离
-- **权限审批是组织级门槛**：钉钉开放平台每个能力域（考勤/日志/通讯录/审批）独立申请审批——第三方重走一遍等于**你要做一个钉钉 ISV**，个人开发者根本拿不到
-- dws 作为官方 CLI 已经内置这一切，调它 = 白嫖官方身份域，这是最硬的护城河
+- **权限审批是组织级门槛**：钉钉开放平台每个能力域独立申请审批——第三方重走一遍等于**做一个钉钉 ISV**，个人开发者根本拿不到
+- dws 作为官方 CLI 已经内置这一切，调它 = 白嫖官方身份域
 
-**路径 C：做 Hermes 原生 plugin（不走 MCP）**
-- 只服务 Hermes 一家，放弃所有其他 MCP host
-- Hermes plugin 系统当前只接 memory / context engine 两类 ABC，不是通用 tool plugin 机制（详见 §4.2）
-- 要做就得 fork Hermes，不可接受
+**路径 C：做 host 专属 plugin（不走 MCP）**
+- 只服务一家 host，放弃所有其他 MCP host
+- 项目早期试过这条路（`legacy/hermes-extensions/`），结论是绑定单一 host 价值不抵成本
 
 **路径 D：dws-driven dynamic MCP wrapper（本项目）**
 - 协议翻译一层，不碰身份、不碰 token、不碰业务逻辑
 - dws 升级 → `npx` 新版本 → **零改代码自动覆盖**
 - 所有 MCP host 通用，投入产出比最大
 
-**一句话**：身份 / 权限 / 业务域由 dws 承担，本项目只做 "CLI protocol ↔ MCP protocol" 的无状态翻译。这个边界一旦被破坏（T1 引入任何 token 管理、业务逻辑、host 假设），本项目就退化回路径 A 或 C，丧失战略价值。
+**一句话**：身份 / 权限 / 业务域由 dws 承担，本项目只做 "CLI protocol ↔ MCP protocol" 的无状态翻译。这个边界一旦被破坏（引入任何 token 管理、业务逻辑、host 假设），本项目就退化回路径 A 或 C，丧失战略价值。
 
 ---
 
-## 2. T1 / T2 双轨结构
+## 2. 系统结构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  T2: hermes-extensions/  (v0.2+, 选做, 单独发包)         │
-│  ────────────────────                                    │
-│  ext-stateful-watch  → 跨周期状态告警 (B6 精简版)        │
-│  ext-long-content    → delegate 处理长会议/文档 (B5)     │
-│  ext-cron-templates  → 纯 prompt 模板, 零代码 (替代 B4)  │
+│  任意 MCP host                                          │
+│  Claude Desktop / Cursor / Codex / Hermes / ...         │
 └────────────────────┬────────────────────────────────────┘
-                     │ 通过 MCP tools/call 调 T1
-                     │ (和其他 host 一样, 不走特殊接口)
+                     │ MCP tools/call (stdio JSON-RPC)
 ┌────────────────────▼────────────────────────────────────┐
-│  T1: packages/dingtalk-workspace-mcp/  (v0, 核心)        │
+│  packages/dingtalk-workspace-mcp/                        │
 │  无状态 MCP server: tools 动态由 dws schema 生成          │
 │  进程模型: 长驻 stdio server, 每次 tool call spawn dws    │
-│  Host 中立: Claude Desktop / Cursor / Codex / Hermes 通用 │
 └────────────────────┬────────────────────────────────────┘
                      │ child_process.spawn('dws', ...)
 ┌────────────────────▼────────────────────────────────────┐
@@ -88,23 +79,15 @@
 
 | 模块 | 输入 | 输出 | 状态 | host 假设 |
 |------|------|------|------|----------|
-| T1 | MCP `tools/call` | JSON (dws stdout) | 无 | 任意 MCP host |
-| T2 ext-stateful-watch | Hermes cron 触发 + 配置 | 告警推送 | 本地 JSONL | Hermes only |
-| T2 ext-long-content | Hermes skill 调用 | 结构化纪要 + 分发结果 | Hermes memory | Hermes only |
-| T2 ext-cron-templates | 安装命令 | 用户 ~/.hermes 下的 cron prompt | 无 | Hermes only |
-
-**跨模块约束**：
-- T1 **禁止**任何 Hermes 假设（API、依赖、路径）
-- T2 各 ext 之间**禁止**互相依赖（独立可发布、可卸载）
-- T2 **必须**通过 T1 调 dws，不允许 T2 直接 spawn dws
+| 主包 | MCP `tools/call` | JSON (dws stdout) | 无 | 任意 MCP host |
 
 ---
 
-## 3. T1：dingtalk-workspace-mcp 详述
+## 3. 主包：dingtalk-workspace-mcp 详述
 
 ### 3.1 核心思路
 
-**"协议适配器"**——把 `dws CLI` 的 JSON 输出翻译成 MCP 协议。**不做任何业务增强**。任何业务逻辑都属于 T2 或上游 agent prompt。
+**"协议适配器"**——把 `dws CLI` 的 JSON 输出翻译成 MCP 协议。**不做任何业务增强**。任何业务逻辑都属于上游 agent prompt。
 
 ### 3.2 目录结构
 
@@ -113,7 +96,7 @@ packages/dingtalk-workspace-mcp/
 ├── src/
 │   ├── cli.ts              # 入口, shebang, 参数解析
 │   ├── server.ts           # MCP server 实例 + 生命周期
-│   ├── schema-loader.ts    # 启动时调 `dws schema`, 转 MCP tool 定义
+│   ├── schema-loader.ts    # 启动时遍历 `dws --help` 树, 转 MCP tool 定义
 │   ├── dispatch.ts         # tools/call → dws spawn (唯一出口)
 │   ├── dws-probe.ts        # dws 存在性 + 版本 + auth 状态检测
 │   ├── errors.ts           # Result<T,E> + 错误归一化
@@ -184,199 +167,87 @@ incoming: tools/call { name: "dingtalk.todo.task_create", arguments: {...} }
 
 ### 3.6 版本策略
 
-- T1 SemVer 独立于 dws
+- 主包 SemVer 独立于 dws
 - `package.json` 声明 `dwsMinVersion: "X.Y.Z"`
-- T1 主版本号只在 **MCP 协议破坏性变更** 或 **dws 最低版本要求大升级** 时 bump
+- 主版本号只在 **MCP 协议破坏性变更** 或 **dws 最低版本要求大升级** 时 bump
 
 ### 3.7 发行
 
 - npm scoped public 包：`@sputnicyoji/dingtalk-workspace-mcp`
 - 用户配置（任意 MCP host）：
-  ```yaml
-  # Hermes 示例
-  mcp_servers:
-    dingtalk:
-      command: "npx"
-      args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
-      timeout: 180
+  ```json
+  {
+    "mcpServers": {
+      "dingtalk": {
+        "command": "npx",
+        "args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
+      }
+    }
+  }
   ```
 - GitHub Actions：tag push → `npm publish` + GitHub Release
 
 ---
 
-## 4. T2：Hermes Extensions
+## 4. 已知约束与风险
 
-### 4.1 立项准入门槛（硬性）
+### 4.1 参数序列化（最大风险）
 
-新 ext 必须满足以下**全部**条件：
-
-1. **Hermes 独家能力依赖**：用 delegate_tool / trajectory_compressor / memory_tool / Honcho / 长驻 cron 状态保持……缺一不可
-2. **Hermes 现成方案做不到**：用 Hermes 原生 cron + `deliver="dingtalk"` + 一份 prompt 已经够了？ → 砍掉，写进 ext-cron-templates
-3. **真实痛感验证**：自己用 T1 + Hermes 原生组合先撑 1-2 周，痛感够强再立项
-4. **不依赖未实现的别的 ext**：ext 之间正交
-
-### 4.2 v0.2：ext-stateful-watch（B6 精简版）
-
-**痛点**：Hermes cron 是无状态的——每次触发都是干净 prompt，无法记住"上次扫到这条 @ 我已经告警过了"。
-
-**做的事**（仅此一件）：
-- 维护"已告警事件"的本地状态（JSONL）
-- 每次 cron 触发**前**做事件过滤，把"新增未告警"列表注入 prompt
-- 不做规则定义、不做 LLM 调用、不做推送（这些都用 Hermes 原生）
-
-**接入形态**：利用 Hermes `cron/jobs.py` 的 **`script` 参数**（pre-run Python 脚本，stdout 拼接到 prompt 前面）。这是研究后选定的最优形态，对比详见 `docs/HERMES_INTEGRATION.md` §3.2。
-
-**为什么不做 Hermes plugin**：研究 `D:\Hermes_Agent\plugins\` 后发现，plugins 系统目前只服务 memory provider 和 context engine 两类 ABC，**不是通用 tool plugin 机制**。要走这条路就得 fork Hermes，不可接受。
-
-**为什么不做独立 MCP server**：状态去重逻辑和 dws 调用强耦合（去重需要拉最近事件），分两个 server 反而割裂。`script` 参数对 cron 场景**天然契合**：触发 → 过滤 → 拼 prompt → agent 行动，单进程链路最短。
-
-**运行流程**：
-```
-cron 触发
-  ↓
-script: dedup_filter.py
-  - 通过 MCP 调 T1 拉最近 @ 我消息
-  - 读 ~/.hermes/dingtalk-extensions/state/unreplied_mentions.jsonl
-  - 过滤掉已告警的
-  - 写 stdout: "你有 N 条新的未回 @ 消息：..."
-  ↓
-prompt 拼上述 stdout
-  ↓
-agent 用 dingtalk.* 工具起草回复，deliver=dingtalk 推送
-```
-
-**目录**：
-```
-hermes-extensions/ext-stateful-watch/
-├── scripts/
-│   └── dedup_filter.py     # cron script 主体
-├── lib/
-│   ├── __init__.py
-│   ├── state.py            # JSONL 读写
-│   └── dws_client.py       # 通过 MCP 调 T1（轻量 client）
-├── templates/
-│   └── unreplied_mentions.yaml  # 配套 cron job 模板
-├── tests/
-├── pyproject.toml          # pipx 安装
-└── README.md
-```
-
-**状态文件**：`~/.hermes/dingtalk-extensions/state/<category>.jsonl`
-- 每行 `{event_id, category, first_seen, last_alerted_at}`
-- 触发迁移阈值：单文件 > 50MB → SQLite
-
-**降级路径**：如未来 Hermes `script` 参数被弃用或行为变化，降级方案是把 dedup 改写为独立 MCP server，让 agent 通过 prompt 显式调 `dingtalk.dedup_check` tool。降级方案在 ext-stateful-watch 启动期自检：dry-run 一次 cron 创建，失败则提示用户切降级模式。
-
-### 4.3 v0.3：ext-long-content（B5）
-
-**痛点**：单 LLM 调用处理 10 万字会议纪要会爆 context；dws 只能 `get` 文档，不能"理解 + 拆分 + 分发"。
-
-**做的事**：提供一组 Hermes skill + helper，把"长内容 → 结构化产出"流水线化：
-- 拉钉钉闪记 transcript（通过 T1）
-- delegate 子 agent 分段总结
-- trajectory_compressor 合并
-- 拆出待办 → @ 人 → 写回钉钉文档（通过 T1）
-
-**目录**：
-```
-hermes-extensions/ext-long-content/
-├── skills/
-│   └── meeting_followup.md      # Hermes skill
-├── src/
-│   └── pipeline.py              # delegate 编排辅助
-├── tests/
-├── pyproject.toml
-└── README.md
-```
-
-### 4.4 v0.1：ext-cron-templates（零代码）
-
-**核心洞察**：调研发现 Hermes cron 已经能覆盖日报/周报/月报这类场景。我们要做的不是写代码，而是**沉淀经过验证的 prompt 模板**。
-
-**做的事**：
-- 提供 3-5 份高质量 cron prompt（日报、周报、月报、待办催办、考勤汇总）
-- 提供安装脚本：`npx @sputnicyoji/dingtalk-workspace-mcp install-cron-templates` → 拷贝到 `~/.hermes/cron/templates/dingtalk/`
-- 用户启用方式：`hermes cronjob create --from <模板路径>`（具体命令以 v0.1 实测为准）
-
-**⚠ v0.1 实施前必须验证**：Hermes 当前 `cron/jobs.py` 的 `create_job()` 接受 prompt/schedule/skills/deliver/script 等结构化参数，但**未在源码中确认是否存在"模板目录约定"或"`--from <yaml>`"CLI 子命令**。两种实施分支：
-- **若 Hermes 支持模板目录**：直接拷贝 yaml 到 `~/.hermes/cron/templates/dingtalk/`，文档教用户跑一行命令
-- **若不支持**：install-cron-templates 改为生成一组 `hermes cronjob create --schedule "..." --prompt "..." --deliver dingtalk` shell 命令脚本（功能等价、对 Hermes 零假设）
-
-无论走哪条分支，**最终交付给用户的体验是"一行命令启用一个 cron 任务"**，差别只在我们这边怎么打包。
-
-**目录**：
-```
-hermes-extensions/ext-cron-templates/
-├── templates/
-│   ├── daily_brief.yaml        # 含 schedule + prompt
-│   ├── weekly_report.yaml
-│   ├── monthly_summary.yaml
-│   ├── overdue_todos.yaml
-│   └── attendance_digest.yaml
-├── install.sh
-├── README.md
-└── tests/
-    └── prompt_smoke_test.py    # 离线渲染验证
-```
-
-**为什么算 "ext" 而不是普通文档**：因为它是项目的官方分发物、有版本号、`install.sh` 是实际命令。
-
----
-
-## 5. 已知约束与风险
-
-### 5.1 参数序列化（T1 最大风险）
-
-dws 嵌套参数的 CLI 表示需要实测。**动 T1 代码前必须验证**：
+dws 嵌套参数的 CLI 表示需要实测。**动主包代码前必须验证**：
 - `dws aitable record query` 的 `filter` 参数（最复杂）
 - `dws calendar event create` 的 `attendees` 数组
 - `dws todo task create` 的 `executors` 数组
 
 验证产出：`docs/decisions/001-param-serialization.md`
 
-### 5.2 dws schema 稳定性
+### 4.2 dws schema 稳定性
 
-dws 升级改 schema 输出格式 → T1 炸。缓解：
+dws 升级改 schema 输出格式 → 主包炸。缓解：
 - 启动时版本检测
 - schema 解析 defensive（未知字段 skip + 日志）
 - 异常降级到只暴露 `dingtalk.raw_invoke(cmd, args)` 兜底 tool
 
-### 5.3 npx 冷启动
+### 4.3 npx 冷启动
 
 首次 `npx -y` 拉包 10-30s。**缓解**：README 首页预告 + 启动时 stderr 提示。
 
-### 5.4 T2 的"独家"判断退化
+### 4.4 仓库名遗留
 
-随时间推移，Hermes 可能新增能力让 T2 ext 变得不再独家。**应对**：
-- 每个 ext README 写明"它独家在哪"
-- 半年一次审查，不再独家的 ext 转为"建议替换为 Hermes 原生 + prompt"，3 个版本后弃用
-
-### 5.5 仓库名误导
-
-仓库叫 `Hermes-dingtalk`，但 T1 是 host-agnostic。**应对**：
-- README 首屏第一句就强调 "T1 通用，T2 是 Hermes 加分包"
+仓库叫 `Hermes-dingtalk`，但项目本体是 host-agnostic 的 npm 包 `@sputnicyoji/dingtalk-workspace-mcp`。**应对**：
+- README 首屏第一句就强调本体是 npm 包
 - 不改仓库名（避免破坏链接）
+- 早期 Hermes 专属代码归档在 `legacy/`，封档点 git tag `milestone-v0.2`
 
 ---
 
-## 6. 不做清单（YAGNI 防线）
+## 5. 不做清单（YAGNI 防线）
 
-**v0 (T1) 不做**：
+**主包不做**：
 - token 管理、OAuth UI（归 dws）
 - npm postinstall 自动下载 dws（用户自装）
 - 组合 tool（等真实使用数据）
-- Hermes 专用优化（违反 host-agnostic）
-
-**T2 不做**：
-- 重写 Hermes 原生已覆盖的能力（messaging adapter / cron / mcp_tool）
-- 不依赖 Hermes 独家能力的"通用扩展"（应该走 T1 + prompt）
-- 多用户/多租户（v1.0+ 再考虑）
-- Web 管理界面
+- 任何形式的 host 专用优化（违反 host-agnostic）
+- 业务逻辑（报告模板、身份解析、告警规则）
 
 **整个项目不做**：
 - 飞书/Slack/Teams/微信
 - 自建 DingTalk SDK
 - 绕过 dws 直调钉钉 API
+- 给 `legacy/` 加新代码（封档，只接受 bug 修复）
+- 在主仓库新开 host 专属扩展（破坏定位，应另起项目）
+
+---
+
+## 6. `legacy/` 说明
+
+`legacy/hermes-extensions/` 是早期"T1 通用 MCP + T2 Hermes 专属扩展"双轨设计的产物。包含：
+
+- `ext-stateful-watch`：3 个 watcher（approvals / reports / todos）+ 64 个测试
+- `ext-cron-templates`：daily_brief.yaml prompt 模板骨架
+
+**为什么砍**：T2 的存在天然破坏 host-agnostic 红线——ext 用 Hermes 独家 API 写的告警规则，只对 Hermes 用户有价值，对其他 90% 用户是噪音。继续维护意味着仓库需要两条产品线、两套测试、两套发布——投入产出比远低于把精力集中在主包通用性。
+
+**封档**：git tag `milestone-v0.2`。代码原样保留作参考，不再迭代、不发包、不进路线图。
 
 ---
 
@@ -384,11 +255,8 @@ dws 升级改 schema 输出格式 → T1 炸。缓解：
 
 | 术语 | 含义 |
 |------|------|
-| **T1** | dingtalk-workspace-mcp，host-agnostic 的核心交付 |
-| **T2** | hermes-extensions，Hermes 专属加分包 |
 | **dws** | DingTalk Workspace CLI，Go 写的钉钉命令行工具 |
-| **Hermes** | Nous Research 的 Python agent 框架 |
-| **B4/B5/B6** | brainstorming 阶段的方向编号；B4 已被砍并由 ext-cron-templates 替代，B5→ext-long-content，B6→ext-stateful-watch |
 | **MCP host** | 消费 MCP server 的 agent 框架（Claude Desktop / Cursor / Codex / Hermes 等） |
 | **MCP** | Model Context Protocol，Anthropic 推的 agent tool 协议 |
-| **dws schema** | `dws schema --format json` 输出，描述所有 dws tool 的元信息 |
+| **dws schema** | `dws --help` 树形遍历 + cobra 解析得到的 tool 元信息 |
+| **legacy** | 早期 Hermes 专属扩展，已封档不再迭代 |
