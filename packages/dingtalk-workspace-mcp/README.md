@@ -27,16 +27,8 @@ dws auth login
 
 ## Wire into your MCP host
 
-### Hermes Agent (`~/.hermes/config.yaml`)
-```yaml
-mcp_servers:
-  dingtalk:
-    command: "npx"
-    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
-    timeout: 180
-```
+`mcp.json` (or your host's equivalent — Claude Desktop, Cursor, Codex, ...):
 
-### Claude Desktop / Cursor / Codex (`mcp.json` or equivalent)
 ```json
 {
   "mcpServers": {
@@ -46,6 +38,16 @@ mcp_servers:
     }
   }
 }
+```
+
+YAML-config hosts use the same shape under their own key:
+
+```yaml
+mcp_servers:
+  dingtalk:
+    command: "npx"
+    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
+    timeout: 180
 ```
 
 That's it. Restart the host. ~80 `dingtalk.*` tools become available.

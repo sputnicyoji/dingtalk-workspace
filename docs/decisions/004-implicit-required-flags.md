@@ -3,7 +3,7 @@
 **日期**：2026-04-14
 **状态**：Accepted（契约观察 + prompt 兜底，非代码变更）
 **研究依据**：dws v1.0.8 (windows/amd64) MCP 端到端测试。
-**关联**：`docs/decisions/003-dws-report-create-contract.md`、`docs/upstream-issues/`、`hermes-extensions/ext-cron-templates/`
+**关联**：`docs/decisions/003-dws-report-create-contract.md`、`docs/upstream-issues/`、`legacy/hermes-extensions/ext-cron-templates/`（已归档）
 
 ---
 

@@ -53,7 +53,7 @@
   "author": "Yoji",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sputnicyoji/hermes-dingtalk.git",
+    "url": "https://github.com/sputnicyoji/dingtalk-workspace.git",
     "directory": "packages/dingtalk-workspace-mcp"
   },
   "publishConfig": {

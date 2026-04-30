@@ -9,7 +9,7 @@
 
 **npm 包**：`@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（已发布）
 **Git tag**：v0.0.1 / v0.0.2 / v0.0.4 / `milestone-v0.2`（legacy 封档）
-**Host 集成**：Claude Code 与 Hermes 均已接入验证，通过全局 bin 共用，端到端 82 tools 可调
+**Host 集成**：多 host 均已接入验证，通过全局 bin 共用，端到端 82 tools 可调
 **项目 milestone**：**v0 已闭环**，**v0.1 进行中**（70% 完成）
 
 ---
@@ -38,11 +38,11 @@
 - ✅ dispatch 层（args → CLI flags，json_array / json_object / array 语义提升 + ADR-001）
 - ✅ 错误归一化：`NOT_INSTALLED` / `VERSION_TOO_OLD` / `AUTH_EXPIRED` / `TIMEOUT` / `NON_ZERO_EXIT`
 - ✅ GitHub Actions CI + npm publish workflow
-- ✅ Hermes / Claude Code 双 host 接入文档
+- ✅ 多 host 接入文档
 
 **退出标准对照**：
 - ✅ 冷启动 < 30s（实测 4-7s）
-- ✅ Hermes + Claude Code 各自接入，82 tools 可调用，真实 API call 成功
+- ✅ 多 host 各自接入，82 tools 可调用，真实 API call 成功
 - ✅ `dws aitable record query` 嵌套 `filter` 参数序列化（ADR-001 §D2 json_object 路径）
 - ✅ auth 未完成时降级 bootstrap-only（schema-loader.ts loadAll）
 - ✅ 86/86 Vitest 测试通过
@@ -75,12 +75,12 @@
 
 ## v0.2 — legacy 封档 ✅ ARCHIVED
 
-**原计划**：交付 `ext-stateful-watch`（Hermes 专属跨周期状态告警）。
+**原计划**：交付 `ext-stateful-watch`（host 专属跨周期状态告警）。
 
-**实际**：MVP 代码完成（64 测试通过、live spot-check 验证），但战略评审后**砍掉双轨设计**——主包专注 host-agnostic 通用性，Hermes 专属扩展不再是产品线一部分。
+**实际**：MVP 代码完成（64 测试通过、live spot-check 验证），但战略评审后**砍掉双轨设计**——主包专注 host-agnostic 通用性，host 专属扩展不再是产品线一部分。
 
 **封档**：
-- 代码归档至 `legacy/hermes-extensions/`（含 `ext-stateful-watch` + `ext-cron-templates` 骨架）
+- 代码与配套文档归档至 `legacy/`（含 `ext-stateful-watch` + `ext-cron-templates` 骨架与原集成调研文档）
 - git tag `milestone-v0.2` 锁定封档点
 - 不发 npm 包、不进后续路线图、不再迭代
 
@@ -147,7 +147,7 @@
 
 ## 不再做的事
 
-- **host 专属扩展**（任何形式）：早期 `hermes-extensions/` 已归档至 `legacy/`，不再扩展。如有特定 host 集成需求，走独立项目。
+- **host 专属扩展**（任何形式）：早期尝试已归档至 `legacy/`，不再扩展。如有特定 host 集成需求，走独立项目。
 - **重写 dws**：上游官方维护，不重造轮子。
 - **支持其他 IM**：飞书 / Slack / Teams / 微信都不在范围内。
 - **token 管理 / OAuth UI**：全部委托 dws。

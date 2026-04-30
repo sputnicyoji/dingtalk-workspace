@@ -3,7 +3,7 @@
 **日期**：2026-04-14
 **状态**：Accepted（契约观察，非代码变更）
 **研究依据**：dws v1.0.8 (windows/amd64, 31eb109) 实测。真实模板 `1740a771d5107f606dc046d4ffc901f0` ("空白日志") 端到端创建成功（reportId `19d8af36f7f818b7dfdec724072bf808`）。
-**关联**：`docs/ARCHITECTURE.md` §6 不做清单、`hermes-extensions/ext-cron-templates/`
+**关联**：`docs/ARCHITECTURE.md` §6 不做清单、`legacy/hermes-extensions/ext-cron-templates/`（已归档）
 
 ---
 
@@ -82,7 +82,7 @@
 
 ### 3.2 T2 层：在 prompt 模板里显式声明契约
 
-`hermes-extensions/ext-cron-templates/templates/daily_brief.yaml` 的 system prompt 必须包含：
+`legacy/hermes-extensions/ext-cron-templates/templates/daily_brief.yaml` 的 system prompt 必须包含：
 > "创建日志前，先调 `dingtalk.report.template.detail --name <模板名>` 取得 `report_template_id` 和每个字段的 `field_name`；之后调 `dingtalk.report.create` 时 `contents[].key` 必须逐字等于 `field_name`。"
 
 ### 3.3 上游：dws 提 issue

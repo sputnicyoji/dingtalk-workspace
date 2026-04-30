@@ -1,7 +1,7 @@
 # dingtalk-workspace-mcp 进度
 
 > 跟踪主包交付进度。权威架构在 `docs/ARCHITECTURE.md`，版本节奏在 `docs/ROADMAP.md`。
-> Hermes 专属扩展已归档至 `legacy/`，封档点 git tag `milestone-v0.2`。
+> 早期 host 专属扩展已归档至 `legacy/`，封档点 git tag `milestone-v0.2`。
 
 ## 当前状态
 
@@ -9,7 +9,7 @@
 - **npm 发布**: `@sputnicyoji/dingtalk-workspace-mcp@0.0.4`（2026-04-14；含全角（必填）parser 修复）
 - **Git tag**: v0.0.1 / v0.0.2 / v0.0.4（v0.0.3 故意跳过——tarball 与 commit 不对齐）
 - **legacy 封档**: `milestone-v0.2`（2026-04-30）
-- **Host 整合**：Claude Code + Hermes 双栈通过全局 bin（`AppData/Roaming/npm/dingtalk-workspace-mcp.cmd`）共用，升级一次双吃
+- **Host 整合**：通过全局 bin（`AppData/Roaming/npm/dingtalk-workspace-mcp.cmd`）共用，多 host 升级一次生效
 
 ## 主包 — `packages/dingtalk-workspace-mcp`
 
@@ -25,7 +25,7 @@
 - [x] **v0.0.4** 全角（必填）parser 识别（attendance.summary 等 29 工具受益）
 - [x] 86/86 测试通过，tsc 清，含 6 条端到端回归用例
 - [x] Windows `npx` spawn 问题绕开：直接指向全局 bin
-- [x] Hermes + Claude Code 双 host 端到端验证：82 tools 全部加载
+- [x] 多 host 端到端验证：82 tools 全部加载
 
 ### 端到端测试结果（v0.0.4，2026-04-14）
 
@@ -59,7 +59,7 @@
 ### 内容
 
 - **`ext-stateful-watch/`** — 跨周期状态告警 MVP
-  - 形态：Hermes cron `script` 参数（pre-run Python，stdout 注入 prompt）
+  - 形态：host cron 的 `script` 参数（pre-run Python，stdout 注入 prompt）
   - 3 个 watcher：`watch_approvals` / `watch_reports` / `watch_todos`
   - 基座：`lib/{event,state,dws_client,config,runtime}.py` + `lib/watchers/`
   - 测试：64 pass（unit + e2e），<0.2s
@@ -75,7 +75,7 @@
 
 1. **CI 账单**：私有仓库消耗 GitHub Actions 付费分钟数，目前走手动发布规避
 2. **Windows npx 启动**：MSYS shell 翻译 `/c` → `C:/`，建议用全局 bin 绝对路径绕开
-3. **Hermes `mcp list` 编码**：Windows GBK 控制台崩溃，需 `PYTHONIOENCODING=utf-8`
+3. **某些 host 的 `mcp list` 编码**：Windows GBK 控制台崩溃，需 `PYTHONIOENCODING=utf-8`
 
 ## 下一阶段建议（按优先级）
 

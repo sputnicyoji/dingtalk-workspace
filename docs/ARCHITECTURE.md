@@ -26,7 +26,7 @@
 
 1. 用户接入任何 MCP host 的成本 ≤ 4 行配置
 2. dws 升级新增产品/能力，wrapper **不改一行代码**自动暴露
-3. 任何代码路径里都不出现 host 假设（"如果是 Hermes 就……"）
+3. 任何代码路径里都不出现 host 假设（具体 host 名字 = red flag）
 
 ### 1.4 为什么不走其他路径（反面论证）
 
@@ -44,7 +44,7 @@
 
 **路径 C：做 host 专属 plugin（不走 MCP）**
 - 只服务一家 host，放弃所有其他 MCP host
-- 项目早期试过这条路（`legacy/hermes-extensions/`），结论是绑定单一 host 价值不抵成本
+- 项目早期试过这条路（代码归档于 `legacy/`），结论是绑定单一 host 价值不抵成本
 
 **路径 D：dws-driven dynamic MCP wrapper（本项目）**
 - 协议翻译一层，不碰身份、不碰 token、不碰业务逻辑
@@ -60,7 +60,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  任意 MCP host                                          │
-│  Claude Desktop / Cursor / Codex / Hermes / ...         │
+│  Claude Desktop / Cursor / Codex / ...                  │
 └────────────────────┬────────────────────────────────────┘
                      │ MCP tools/call (stdio JSON-RPC)
 ┌────────────────────▼────────────────────────────────────┐
@@ -213,10 +213,9 @@ dws 升级改 schema 输出格式 → 主包炸。缓解：
 
 ### 4.4 仓库名遗留
 
-仓库叫 `Hermes-dingtalk`，但项目本体是 host-agnostic 的 npm 包 `@sputnicyoji/dingtalk-workspace-mcp`。**应对**：
-- README 首屏第一句就强调本体是 npm 包
-- 不改仓库名（避免破坏链接）
-- 早期 Hermes 专属代码归档在 `legacy/`，封档点 git tag `milestone-v0.2`
+项目本体是 host-agnostic 的 npm 包 `@sputnicyoji/dingtalk-workspace-mcp`。**应对**：
+- README 首屏强调本体是 npm 包
+- 早期 host 专属代码归档在 `legacy/`，封档点 git tag `milestone-v0.2`
 
 ---
 
@@ -240,10 +239,11 @@ dws 升级改 schema 输出格式 → 主包炸。缓解：
 
 ## 6. `legacy/` 说明
 
-`legacy/hermes-extensions/` 是早期"T1 通用 MCP + T2 Hermes 专属扩展"双轨设计的产物。包含：
+`legacy/` 是早期"T1 通用 MCP + T2 host 专属扩展"双轨设计的产物。包含：
 
-- `ext-stateful-watch`：3 个 watcher（approvals / reports / todos）+ 64 个测试
-- `ext-cron-templates`：daily_brief.yaml prompt 模板骨架
+- `legacy/hermes-extensions/ext-stateful-watch`：3 个 watcher（approvals / reports / todos）+ 64 个测试
+- `legacy/hermes-extensions/ext-cron-templates`：cron prompt 模板骨架
+- `legacy/docs/HERMES_INTEGRATION.md`：配套调研文档
 
 **为什么砍**：host 专属扩展破坏本项目的 host-agnostic 红线（论证见 §1.4 路径 C）。一旦接受双轨，仓库需要两条产品线、两套测试、两套发布——选择把精力集中到主包通用性。
 
@@ -256,7 +256,7 @@ dws 升级改 schema 输出格式 → 主包炸。缓解：
 | 术语 | 含义 |
 |------|------|
 | **dws** | DingTalk Workspace CLI，Go 写的钉钉命令行工具 |
-| **MCP host** | 消费 MCP server 的 agent 框架（Claude Desktop / Cursor / Codex / Hermes 等） |
+| **MCP host** | 消费 MCP server 的 agent 框架（Claude Desktop / Cursor / Codex 等） |
 | **MCP** | Model Context Protocol，Anthropic 推的 agent tool 协议 |
 | **dws schema** | `dws --help` 树形遍历 + cobra 解析得到的 tool 元信息 |
-| **legacy** | 早期 Hermes 专属扩展，已封档不再迭代 |
+| **legacy** | 早期 host 专属扩展，已封档不再迭代 |

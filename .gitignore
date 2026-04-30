@@ -13,7 +13,7 @@ build/
 # Reference repos (cloned, not part of this project)
 ref-git/
 
-# Hermes / dingtalk-agent runtime state
+# Host runtime state created during local testing
 .hermes/
 
 # IDE / OS
