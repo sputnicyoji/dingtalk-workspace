@@ -6,26 +6,32 @@ import {
   isAuthExpiredStderr,
 } from '../src/errors.js';
 
+const fakeGithubPat = `ghp_${'a'.repeat(24)}`;
+
 describe('redact', () => {
   it('redacts Bearer tokens', () => {
     expect(redact('Bearer abcdef1234567890.xyz')).toBe('Bearer [REDACTED]');
   });
 
   it('redacts access_token=', () => {
-    expect(redact('access_token=ghp_abcdef0123456789ABCDEFG')).toMatch(
-      /access_token=\[REDACTED\]/
-    );
+    expect(redact(`access_token=${fakeGithubPat}`)).toMatch(/access_token=\[REDACTED\]/);
   });
 
   it('redacts ghp_ pat', () => {
-    expect(redact('using ghp_aBcDeFgHiJ0123456789KLMNopq')).toContain(
-      'ghp_[REDACTED]'
-    );
+    expect(redact(`using ${fakeGithubPat}`)).toContain('ghp_[REDACTED]');
   });
 
   it('redacts AppKey & AppSecret', () => {
     expect(redact('AppKey=dingtalkappkey12345')).toContain('AppKey=[REDACTED]');
     expect(redact('AppSecret=secret_value_12345')).toContain('AppSecret=[REDACTED]');
+  });
+
+  it('redacts generic secret fields', () => {
+    expect(redact('client_secret=supersecretvalue')).toContain('client_secret=[REDACTED]');
+    expect(redact('DWS_CLIENT_SECRET: supersecretvalue')).toContain(
+      'DWS_CLIENT_SECRET: [REDACTED]'
+    );
+    expect(redact('api-key: abcdefgh12345678')).toContain('api-key: [REDACTED]');
   });
 
   it('returns undefined for undefined input', () => {
@@ -67,9 +73,9 @@ describe('makeError + formatError', () => {
 
   it('redacts stderr when constructing', () => {
     const e = makeError('AUTH_EXPIRED', 'oops', {
-      stderr: 'leaked AppSecret=secret_value_abcdefg please',
+      stderr: 'leaked client_secret=secretvalueabcdefg please',
     });
-    expect(e.stderr).toContain('AppSecret=[REDACTED]');
+    expect(e.stderr).toContain('client_secret=[REDACTED]');
   });
 });
 

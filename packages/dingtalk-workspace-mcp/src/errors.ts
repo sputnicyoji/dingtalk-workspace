@@ -17,6 +17,10 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/refresh[_-]?token["'\s:=]+[A-Za-z0-9._\-+/=]{8,}/gi, 'refresh_token=[REDACTED]'],
   [/AppKey["'\s:=]+[A-Za-z0-9._\-]{8,}/gi, 'AppKey=[REDACTED]'],
   [/AppSecret["'\s:=]+[A-Za-z0-9._\-]{8,}/gi, 'AppSecret=[REDACTED]'],
+  [
+    /\b([A-Za-z0-9_.-]*(?:secret|token|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*)\b(["'\s:=]+)([A-Za-z0-9._\-+/=]{8,})/gi,
+    '$1$2[REDACTED]',
+  ],
   [/ghp_[A-Za-z0-9]{20,}/g, 'ghp_[REDACTED]'],
   [/sk-[A-Za-z0-9]{20,}/g, 'sk-[REDACTED]'],
 ];
