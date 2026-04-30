@@ -170,7 +170,7 @@ D1 中 4b 把 array of objects 整个 JSON.stringify。但实际 dws 命令里**
 ## 6. 实测命令记录（可复现）
 
 ```bash
-export PATH="/c/Users/zhangxuechen/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # 基础探测
 dws version
