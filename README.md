@@ -170,6 +170,63 @@ packages/dingtalk-workspace-mcp/
 
 ## 简体中文
 
+### 📦 安装 — npm 包 `@sputnicyoji/dingtalk-workspace-mcp`
+
+把以下配置加到 MCP host 的 `mcp.json`（Claude Desktop / Cursor / Codex 等等都用同一份）：
+
+```json
+{
+  "mcpServers": {
+    "dingtalk": {
+      "command": "npx",
+      "args": ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
+    }
+  }
+}
+```
+
+完事。不用 `npm install -g`、不用克隆、不用编译——`npx` 首次运行时会自动拉包。重启 host 后约 80 个 `dingtalk.*` tool 自动出现。
+
+<details>
+<summary>使用 YAML 配置的 host（结构相同）</summary>
+
+```yaml
+mcp_servers:
+  dingtalk:
+    command: "npx"
+    args: ["-y", "@sputnicyoji/dingtalk-workspace-mcp"]
+    timeout: 180
+```
+
+</details>
+
+> [!TIP]
+> 生产环境建议锁版本：`"@sputnicyoji/dingtalk-workspace-mcp@0.0.5"`。
+
+> [!NOTE]
+> host 配置里没有 token、没有环境变量、没有任何密钥。身份、权限、token 刷新全部委托给 `dws` CLI。
+
+#### 前置依赖
+
+MCP server 是薄薄一层协议适配，真正的能力在 `dws`，**本机只装一次**：
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.sh | sh
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.ps1 | iex
+
+# 完成 OAuth 登录（一次性浏览器授权）
+dws auth login
+```
+
+| 依赖 | 用途 |
+|------|------|
+| [`dws` CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) ≥ 1.0.7 | 钉钉官方能力引擎，须在 `PATH` |
+| Node.js ≥ 20 | MCP server 的运行时（`npx` 自动拉包） |
+| `dws auth login` 已完成 | 复用 dws 的认证 & token 管理 |
+
 ### 为什么需要这一层
 
 钉钉已经有官方能力底座 [`dws`](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli)。本项目不替代 dws，只把 dws 转成通用 MCP server：启动时遍历 `dws --help` 树（已认证时优先 `dws schema --format json`），把 **dws 整个命令面**动态翻译成 MCP tools。dws 升级新增能力，重启一次 MCP server 即生效，**零代码维护**。
